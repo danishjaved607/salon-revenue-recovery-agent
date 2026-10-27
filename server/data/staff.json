@@ -1,0 +1,50 @@
+[
+  {
+    "id": "stf-001",
+    "name": "Ayesha Khan",
+    "specializations": ["svc-001", "svc-002", "svc-003"],
+    "workingDays": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+    "workingHours": { "start": "09:00", "end": "18:00" },
+    "breakTime": { "start": "13:00", "end": "14:00" }
+  },
+  {
+    "id": "stf-002",
+    "name": "Zara Siddiqui",
+    "specializations": ["svc-001", "svc-002", "svc-003"],
+    "workingDays": ["Tue", "Wed", "Thu", "Fri", "Sat"],
+    "workingHours": { "start": "10:00", "end": "19:00" },
+    "breakTime": { "start": "14:00", "end": "15:00" }
+  },
+  {
+    "id": "stf-003",
+    "name": "Nadia Raza",
+    "specializations": ["svc-004", "svc-005", "svc-006"],
+    "workingDays": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    "workingHours": { "start": "09:00", "end": "17:00" },
+    "breakTime": { "start": "13:00", "end": "13:30" }
+  },
+  {
+    "id": "stf-004",
+    "name": "Hira Baig",
+    "specializations": ["svc-004", "svc-005", "svc-006"],
+    "workingDays": ["Wed", "Thu", "Fri", "Sat", "Sun"],
+    "workingHours": { "start": "11:00", "end": "20:00" },
+    "breakTime": null
+  },
+  {
+    "id": "stf-005",
+    "name": "Sana Mirza",
+    "specializations": ["svc-007", "svc-008"],
+    "workingDays": ["Mon", "Tue", "Thu", "Fri"],
+    "workingHours": { "start": "09:00", "end": "17:00" },
+    "breakTime": { "start": "12:30", "end": "13:30" }
+  },
+  {
+    "id": "stf-006",
+    "name": "Fizza Anwar",
+    "specializations": ["svc-009", "svc-010"],
+    "workingDays": ["Mon", "Wed", "Fri", "Sat"],
+    "workingHours": { "start": "10:00", "end": "18:00" },
+    "breakTime": { "start": "13:00", "end": "14:00" }
+  }
+]

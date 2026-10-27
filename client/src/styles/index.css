@@ -1,0 +1,103 @@
+/* ──────────────────────────────────────────────────────────────────
+   Salon Revenue Recovery Agent — Global Styles
+   Milestone 1 placeholder: design tokens and base reset only.
+   Full UI styles will be added in Milestone 4.
+────────────────────────────────────────────────────────────────── */
+
+/* Design Tokens */
+:root {
+  --color-bg:          #0f1117;
+  --color-surface:     #1a1d27;
+  --color-border:      #2a2d3e;
+  --color-primary:     #7c6af7;
+  --color-primary-dim: #5b4fd4;
+  --color-accent:      #f76c6c;
+  --color-text:        #e8eaf0;
+  --color-text-muted:  #7a7f9a;
+  --color-success:     #4caf82;
+  --color-warning:     #f0a84a;
+
+  --font-sans:   'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono:   'JetBrains Mono', 'Fira Code', monospace;
+
+  --radius-sm:   6px;
+  --radius-md:   12px;
+  --radius-lg:   20px;
+
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.4);
+  --transition:  0.2s ease;
+}
+
+/* Base Reset */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 16px; scroll-behavior: smooth; }
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+button { cursor: pointer; font-family: inherit; }
+img { display: block; max-width: 100%; }
+
+/* App Shell — Milestone 4 will expand these */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2rem;
+  height: 60px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.app-logo {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  letter-spacing: -0.02em;
+}
+
+.app-nav {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.nav-link {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition), background var(--transition);
+}
+
+.nav-link:hover, .nav-link.active {
+  color: var(--color-text);
+  background: var(--color-border);
+}
+
+.nav-link.active {
+  color: var(--color-primary);
+}
+
+.app-main {
+  flex: 1;
+  padding: 2rem;
+  max-width: 1280px;
+  width: 100%;
+  margin: 0 auto;
+}

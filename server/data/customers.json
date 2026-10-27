@@ -1,0 +1,92 @@
+[
+  {
+    "id": "cus-001",
+    "name": "Sara Malik",
+    "phone": "+92-300-1234567",
+    "email": "sara.malik@example.com",
+    "consentToOffers": true,
+    "preferredContactMethod": "email",
+    "bookingHistory": ["apt-003", "apt-011"]
+  },
+  {
+    "id": "cus-002",
+    "name": "Aisha Tariq",
+    "phone": "+92-321-9876543",
+    "email": "aisha.tariq@example.com",
+    "consentToOffers": true,
+    "preferredContactMethod": "phone",
+    "bookingHistory": ["apt-001", "apt-007"]
+  },
+  {
+    "id": "cus-003",
+    "name": "Maria Yusuf",
+    "phone": "+92-333-5550101",
+    "email": "maria.yusuf@example.com",
+    "consentToOffers": false,
+    "preferredContactMethod": "email",
+    "bookingHistory": ["apt-004"]
+  },
+  {
+    "id": "cus-004",
+    "name": "Noor Fatima",
+    "phone": "+92-312-4440202",
+    "email": "noor.fatima@example.com",
+    "consentToOffers": true,
+    "preferredContactMethod": "email",
+    "bookingHistory": ["apt-005", "apt-009"]
+  },
+  {
+    "id": "cus-005",
+    "name": "Rabia Sheikh",
+    "phone": "+92-345-7770303",
+    "email": "rabia.sheikh@example.com",
+    "consentToOffers": true,
+    "preferredContactMethod": "phone",
+    "bookingHistory": ["apt-002"]
+  },
+  {
+    "id": "cus-006",
+    "name": "Dua Hassan",
+    "phone": "+92-300-6660404",
+    "email": "dua.hassan@example.com",
+    "consentToOffers": true,
+    "preferredContactMethod": "email",
+    "bookingHistory": []
+  },
+  {
+    "id": "cus-007",
+    "name": "Hira Qureshi",
+    "phone": "+92-321-1110505",
+    "email": "hira.qureshi@example.com",
+    "consentToOffers": false,
+    "preferredContactMethod": "phone",
+    "bookingHistory": ["apt-006", "apt-010"]
+  },
+  {
+    "id": "cus-008",
+    "name": "Saba Nawaz",
+    "phone": "+92-333-2220606",
+    "email": "saba.nawaz@example.com",
+    "consentToOffers": true,
+    "preferredContactMethod": "email",
+    "bookingHistory": ["apt-008"]
+  },
+  {
+    "id": "cus-009",
+    "name": "Zoya Iqbal",
+    "phone": "+92-312-9990707",
+    "email": "zoya.iqbal@example.com",
+    "consentToOffers": true,
+    "preferredContactMethod": "email",
+    "bookingHistory": []
+  },
+  {
+    "id": "cus-010",
+    "name": "Alina Cheema",
+    "phone": "+92-345-8880808",
+    "email": "alina.cheema@example.com",
+    "consentToOffers": true,
+    "preferredContactMethod": "phone",
+    "bookingHistory": ["apt-012"]
+  }
+]
