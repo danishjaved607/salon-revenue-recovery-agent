@@ -1,0 +1,92 @@
+[
+  {
+    "id": "svc-001",
+    "name": "Hair Cut & Blow-Dry",
+    "category": "hair",
+    "durationMinutes": 60,
+    "price": 2500,
+    "currency": "PKR",
+    "description": "Shampoo, precision cut, and professional blow-dry finish."
+  },
+  {
+    "id": "svc-002",
+    "name": "Full Hair Colour",
+    "category": "hair",
+    "durationMinutes": 120,
+    "price": 6500,
+    "currency": "PKR",
+    "description": "Single process permanent colour with conditioning treatment."
+  },
+  {
+    "id": "svc-003",
+    "name": "Balayage & Toning",
+    "category": "hair",
+    "durationMinutes": 180,
+    "price": 12000,
+    "currency": "PKR",
+    "description": "Hand-painted highlights with custom toner for a sun-kissed effect."
+  },
+  {
+    "id": "svc-004",
+    "name": "Classic Manicure",
+    "category": "nails",
+    "durationMinutes": 45,
+    "price": 1200,
+    "currency": "PKR",
+    "description": "Filing, cuticle care, nail shaping, and polish of choice."
+  },
+  {
+    "id": "svc-005",
+    "name": "Gel Manicure",
+    "category": "nails",
+    "durationMinutes": 60,
+    "price": 2000,
+    "currency": "PKR",
+    "description": "Long-lasting gel polish with UV curing and cuticle treatment."
+  },
+  {
+    "id": "svc-006",
+    "name": "Classic Pedicure",
+    "category": "nails",
+    "durationMinutes": 60,
+    "price": 1500,
+    "currency": "PKR",
+    "description": "Foot soak, scrub, nail care, and polish."
+  },
+  {
+    "id": "svc-007",
+    "name": "Deep Cleansing Facial",
+    "category": "skin",
+    "durationMinutes": 75,
+    "price": 3500,
+    "currency": "PKR",
+    "description": "Cleanse, exfoliate, steam, extraction, and hydrating mask."
+  },
+  {
+    "id": "svc-008",
+    "name": "Anti-Ageing Facial",
+    "category": "skin",
+    "durationMinutes": 90,
+    "price": 5500,
+    "currency": "PKR",
+    "description": "Collagen-boosting treatment with LED therapy and serums."
+  },
+  {
+    "id": "svc-009",
+    "name": "Eyebrow Threading & Tint",
+    "category": "brows",
+    "durationMinutes": 30,
+    "price": 900,
+    "currency": "PKR",
+    "description": "Precision thread shaping and semi-permanent tint."
+  },
+  {
+    "id": "svc-010",
+    "name": "Lash Lift & Tint",
+    "category": "brows",
+    "durationMinutes": 60,
+    "price": 3000,
+    "currency": "PKR",
+    "description": "Keratin lash lift with volumising tint. Lasts 6–8 weeks."
+  }
+]
