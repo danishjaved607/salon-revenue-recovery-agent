@@ -19,6 +19,10 @@ const {
   findEligibleCandidates,
   MatchingError,
 } = require('../services/matchingService');
+const {
+  confirmBooking,
+  BookingConfirmationError,
+} = require('../services/bookingService');
 
 // GET /api/appointments/cancelled — List all cancelled appointments
 router.get('/cancelled', (req, res, next) => {
@@ -111,6 +115,46 @@ router.get('/:id/matches', (req, res, next) => {
     });
   } catch (err) {
     if (err instanceof MatchingError) {
+      return res.status(err.statusCode).json({
+        success: false,
+        error: {
+          code: err.code,
+          message: err.message,
+        },
+      });
+    }
+    next(err);
+  }
+});
+
+// POST /api/appointments/:id/confirm — Confirm recovery booking for a cancelled appointment
+router.post('/:id/confirm', (req, res, next) => {
+  try {
+    const { waitlistId, notes, confirmedAt } = req.body || {};
+    const result = confirmBooking(req.params.id, waitlistId, { notes, confirmedAt });
+    res.json(result);
+  } catch (err) {
+    if (err instanceof BookingConfirmationError) {
+      return res.status(err.statusCode).json({
+        success: false,
+        error: {
+          code: err.code,
+          message: err.message,
+        },
+      });
+    }
+    next(err);
+  }
+});
+
+// POST /api/appointments/:id/confirm-recovery — Alias for confirm recovery booking
+router.post('/:id/confirm-recovery', (req, res, next) => {
+  try {
+    const { waitlistId, notes, confirmedAt } = req.body || {};
+    const result = confirmBooking(req.params.id, waitlistId, { notes, confirmedAt });
+    res.json(result);
+  } catch (err) {
+    if (err instanceof BookingConfirmationError) {
       return res.status(err.statusCode).json({
         success: false,
         error: {

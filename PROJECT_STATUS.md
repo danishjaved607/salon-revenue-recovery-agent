@@ -10,7 +10,7 @@ This document tracks completed work, current progress, architectural decisions, 
 | Milestone | Scope | Status | Notes |
 | :--- | :--- | :--- | :--- |
 | **Milestone 1** | Project structure, package setup, synthetic data, SQLite init, idempotent seed loader, test suite | **Completed** | Full in-memory and file-based test coverage passed |
-| **Milestone 2** | Cancellation detection, eligibility engine, waitlist matching rules | **Completed** | Full cancellation and waitlist matching logic verified with 34 tests |
+| **Milestone 2** | Cancellation detection, eligibility engine, waitlist matching, and safe booking confirmation | **Completed** | Parts A, B, and C verified with 54 tests across cancellation, matching, and booking |
 | **Milestone 3** | AI offer generation (OpenAI) with fallback templates & reply simulator | Not Started | Depends on Milestone 2 |
 | **Milestone 4** | React + Vite UI (Dashboard, Appointments, Waitlist, Offers) | Not Started | Depends on Milestone 2 & 3 |
 | **Milestone 5** | End-to-end integration, safety validations, revenue recovery reporting | Not Started | Final milestone |
@@ -181,7 +181,68 @@ Created 5 realistic JSON datasets in `server/data/`:
   7. **End-to-End Matching & Ranking** (2 tests):
      - Identifies and ranks eligible candidates on seed data in exact priority order (`wl-001` priority 1, `wl-002` priority 2).
      - Verifies structured exclusion explanations for every rejected candidate.
-- Total test suite count across project: **47 tests passing (0 failing)** across 14 suites (`setup.test.js`, `cancellation.test.js`, and `matching.test.js`).
+- Total test suite count across project: **67 tests passing (0 failing)** across 21 suites (`setup.test.js`, `cancellation.test.js`, `matching.test.js`, and `booking.test.js`).
+
+---
+
+## Milestone 2 — Part C Implementation Summary: Safe Booking Confirmation & Double-Booking Prevention
+
+### 1. Booking Confirmation Service (`services/bookingService.js`)
+- **`confirmBooking(appointmentId, waitlistId, optionsOrDb, maybeDb)`**:
+  - **Transactional Integrity**: Encapsulates all read-validations and multi-table updates inside a SQLite `BEGIN IMMEDIATE` transaction via `withTransaction()`, guaranteeing immediate write lock acquisition and atomic rollback if any condition fails.
+  - **Live State Revalidation**: Does not trust stale or cached matching results. Inside the transaction, revalidates:
+    1. Slot existence and status (`status === 'cancelled'`; rejects already recovered slots with 409 `SLOT_ALREADY_CONFIRMED` and non-cancelled slots with 400 `INVALID_APPOINTMENT_STATUS`).
+    2. Waitlist candidate existence and status (`status === 'waiting'`; rejects already booked entries with 409 `WAITLIST_ALREADY_BOOKED`).
+    3. Service compatibility (`candidate.serviceId === appointment.serviceId`).
+    4. Current customer and waitlist consent (`customers.consentToOffers === 1` and `waitlist.consentGiven === 1`).
+    5. Assigned staff qualifications (`staff.specializations.includes(appointment.serviceId)`).
+    6. Assigned staff schedule: working days, shift hours, and scheduled break intervals.
+    7. Staff active appointment conflicts: checks for active overlapping bookings (`confirmed` or `recovered`), rejecting with 409 `STAFF_TIME_CONFLICT`.
+    8. Customer active appointment conflicts: checks for active overlapping bookings (`confirmed` or `recovered`), rejecting with 409 `CUSTOMER_TIME_CONFLICT`.
+    9. Customer availability and staff preferences (`availableDates`, `availableTimeSlots` bucket, `preferAnyStaff` vs. `preferredStaffId`).
+  - **Guarded Atomic Updates**:
+    - Updates `appointments`: sets `status = 'recovered'`, `customerId = waitlist.customerId`, and appends recovery notes with guard `WHERE id = ? AND status = 'cancelled'`. Throws 409 `CONCURRENT_MODIFICATION` if row count is 0.
+    - Updates `waitlist`: sets `status = 'booked'` with guard `WHERE id = ? AND status = 'waiting'`. Throws 409 `CONCURRENT_MODIFICATION` if row count is 0.
+    - Updates `customers`: safely appends `appointment.id` to `customer.bookingHistory` JSON array.
+    - Updates `offers`: if a corresponding offer exists in `offers` for this `(waitlistId, appointmentId)`, updates its status to `'accepted'` and sets `respondedAt`.
+  - Returns structured confirmation object containing booking details, refreshed appointment, and waitlist records.
+
+### 2. API Routes (`routes/appointments.js`)
+- Added endpoints:
+  - `POST /api/appointments/:id/confirm`: Accepts `{ waitlistId, notes, confirmedAt }` and returns HTTP 200 with structured booking confirmation.
+  - `POST /api/appointments/:id/confirm-recovery`: Expressive alias for the recovery confirmation endpoint.
+  - Structured error responses: HTTP 400 for input/validation errors, 404 for missing records, and 409 for conflicts / duplicate confirmation attempts.
+
+### 3. Automated Tests & Results (`tests/booking.test.js`)
+- 20 focused tests organized into 7 suites:
+  1. **Successful Confirmation & State Transitions** (2 tests):
+     - Confirms cancelled slot `apt-001` with `wl-001`, verifying status transitions (`appointments` to `recovered`, `waitlist` to `booked`, `customers.bookingHistory` updated).
+     - Transitions matching offer in `offers` to `accepted` with `respondedAt`.
+  2. **Input Validation & Invalid Statuses** (5 tests):
+     - Rejects missing IDs (400 `INVALID_INPUT`).
+     - Rejects nonexistent appointment (404 `APPOINTMENT_NOT_FOUND`).
+     - Rejects confirmed appointment (400 `INVALID_APPOINTMENT_STATUS`).
+     - Rejects completed appointment (400 `INVALID_APPOINTMENT_STATUS`).
+     - Rejects nonexistent waitlist entry (404 `WAITLIST_NOT_FOUND`).
+  3. **Ineligible Candidate Revalidation** (6 tests):
+     - Rejects service mismatch (400 `SERVICE_MISMATCH`).
+     - Rejects revoked customer offer consent (400 `NO_CUSTOMER_CONSENT`).
+     - Rejects revoked waitlist consent (400 `NO_WAITLIST_CONSENT`).
+     - Rejects slot date not in customer `availableDates` (400 `DATE_NOT_AVAILABLE`).
+     - Rejects time bucket mismatch (400 `TIME_SLOT_NOT_AVAILABLE`).
+     - Rejects preferred staff mismatch when `preferAnyStaff = 0` (400 `STAFF_PREFERENCE_MISMATCH`).
+  4. **Staff Qualifications & Time Conflicts** (2 tests):
+     - Rejects unqualified staff assignment (400 `STAFF_NOT_QUALIFIED`).
+     - Rejects conflicting active staff appointment and verifies complete rollback (409 `STAFF_TIME_CONFLICT`).
+  5. **Customer Double-Booking Prevention** (1 test):
+     - Rejects conflicting active customer appointment and verifies complete rollback (409 `CUSTOMER_TIME_CONFLICT`).
+  6. **Duplicate Confirmation Prevention** (2 tests):
+     - Rejects repeated confirmation of an already-recovered slot (409 `SLOT_ALREADY_CONFIRMED`).
+     - Rejects booking an already-booked waitlist candidate into another slot (409 `WAITLIST_ALREADY_BOOKED`).
+  7. **Competing Confirmation Requests & Concurrency** (2 tests):
+     - Serializes competing requests for the same slot, allowing exactly one to succeed and rejecting the second with 409 without data corruption.
+     - Verifies guarded update rejection on simulated race modification.
+- Total test suite count across project: **67 tests passing (0 failing)** across 21 suites (`setup.test.js`, `cancellation.test.js`, `matching.test.js`, and `booking.test.js`).
 
 ---
 
@@ -193,21 +254,26 @@ Created 5 realistic JSON datasets in `server/data/`:
 2. **Node 22 Native Test Runner (`node:test`)**:
    - Uses built-in `node:test` and `node:assert/strict`.
    - Eliminates heavyweight testing framework dependencies and version mismatches.
-3. **Atomic SQL State Transitions**:
-   - Status updates are guarded by `WHERE status = 'confirmed'` to prevent concurrent cancellation race conditions and state corruption.
-4. **Deterministic Eligibility & Matching Engine**:
+3. **Immediate SQLite Transaction Isolation (`BEGIN IMMEDIATE`)**:
+   - Acquires a write lock immediately upon entering the transaction, ensuring competing concurrent workers are serialized before modifying slot or waitlist records.
+4. **Live State Revalidation (No Stale Reads)**:
+   - Always re-queries appointment and waitlist status, consent, schedule, and conflicts inside the transaction immediately prior to executing state transitions.
+5. **Guarded Atomic State Transitions**:
+   - Updates are conditioned with `WHERE id = ? AND status = 'cancelled'` (for appointments) and `WHERE id = ? AND status = 'waiting'` (for waitlist) with `changes === 1` checks to prevent race condition corruption.
+6. **Deterministic Eligibility & Matching Engine**:
    - Multi-stage qualification and availability checks (staff qualification, staff shifts, breaks, customer consent, service match, dates, time buckets, and double-booking protection) are kept completely deterministic in pure SQL and JavaScript logic, strictly decoupled from future AI offer drafting.
-5. **Time Bucket & Interval Math**:
+7. **Time Bucket & Interval Math**:
    - Minute-from-midnight conversion (`timeToMinutes`) and standard interval intersection (`startA < endB && endA > startB`) provide timezone-safe, sub-minute precision schedule collision detection.
-6. **Relational Foreign Key Constraints**:
+8. **Relational Foreign Key Constraints**:
    - `PRAGMA foreign_keys = ON` enforced at SQLite connection opening to guarantee data consistency.
 
 ---
 
-## Known Issues / Constraints
+## Known Issues / Constraints & Limitations
 
 - Node.js emits an `ExperimentalWarning: SQLite is an experimental feature` log in Node 22, which is expected for `node:sqlite` and does not affect runtime reliability or test execution.
-- No frontend screens, AI endpoints, or booking confirmation logic exist in this milestone, as strictly governed by Milestone scope boundaries.
+- Single-process in-memory SQLite instances are inherently isolated per test runner thread; production environments using file-based SQLite rely on WAL mode and `BEGIN IMMEDIATE` for cross-process concurrency safety.
+- No frontend screens or AI endpoints exist in this milestone, as strictly governed by Milestone scope boundaries.
 
 ---
 
