@@ -16,8 +16,8 @@ app.use(cors({
 app.use(express.json());
 app.use(require('./middleware/requestLogger'));
 
-// ── Routes (wired in Milestones 2+) ─────────────────────────────────────────
-// app.use('/api/appointments', require('./routes/appointments'));
+// ── Routes ──────────────────────────────────────────────────────────────────
+app.use('/api/appointments', require('./routes/appointments'));
 // app.use('/api/waitlist',     require('./routes/waitlist'));
 // app.use('/api/offers',       require('./routes/offers'));
 // app.use('/api/dashboard',    require('./routes/dashboard'));
