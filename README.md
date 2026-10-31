@@ -20,7 +20,10 @@ The application will match cancelled slots with eligible waitlist customers, pre
 
 ## Project Status
 
-Milestone 1 complete: Project structure, synthetic datasets, SQLite schema, safe idempotent seed loader, and automated test suite.
+- **Milestone 1 (Completed)**: Project structure, package setup, synthetic datasets, SQLite schema, idempotent seed loader, and base automated test suite.
+- **Milestone 2 (Completed)**: Cancellation detection, eligibility matching engine, and atomic booking recovery confirmation with double-booking prevention.
+- **Milestone 3 — Part A (Completed)**: Offer creation and tracking, live revalidation, duplicate active offer prevention, lifecycle status updates, and offer query endpoints.
+- **Milestone 3 — Parts B & C (Pending)**: AI offer message generation (OpenAI) with fallback templates, and customer reply simulation.
 
 ## Development Approach
 
@@ -67,11 +70,23 @@ salon-revenue-recovery-agent/
     ├── middleware/
     │   ├── errorHandler.js   # Centralized error handler
     │   └── requestLogger.js  # HTTP request logger
+    ├── routes/
+    │   ├── appointments.js   # Cancellation, matching, booking, and slot offers routes
+    │   └── offers.js         # Offer creation, querying, and status updates routes
+    ├── services/
+    │   ├── cancellationService.js # Appointment cancellation detection and validation
+    │   ├── matchingService.js     # Deterministic candidate qualification & eligibility engine
+    │   ├── bookingService.js      # Safe booking confirmation and slot recovery
+    │   └── offerService.js        # Offer generation, tracking, and lifecycle management
     └── tests/
-        └── setup.test.js     # Milestone 1 database and seed test suite
+        ├── setup.test.js          # Milestone 1 database and seed test suite
+        ├── cancellation.test.js   # Milestone 2 Part A cancellation detection tests
+        ├── matching.test.js       # Milestone 2 Part B waitlist matching tests
+        ├── booking.test.js        # Milestone 2 Part C booking confirmation tests
+        └── offers.test.js         # Milestone 3 Part A offer creation and tracking tests
 ```
 
-## Getting Started (Milestone 1)
+## Getting Started
 
 ### Prerequisites
 
@@ -89,11 +104,14 @@ node config/database.js
 
 This operation is safe and idempotent: re-running it will detect existing records and skip re-insertion without duplicating data.
 
-### Running Milestone 1 Tests
+### Running Automated Tests
 
-Execute the automated test suite verifying JSON dataset integrity, SQLite table creation, idempotent seed loading, and foreign key constraint enforcement:
+Execute the complete automated test suite across all completed milestones (dataset schemas, database constraints, cancellation detection, waitlist matching, safe booking recovery, and offer creation/lifecycle):
 
 ```bash
 cd server
 npm test
 ```
+
+All 96 tests run in-memory using Node.js built-in `node:test` and `node:sqlite` with zero external dependencies.
+

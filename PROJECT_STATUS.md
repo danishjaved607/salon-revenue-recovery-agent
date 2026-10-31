@@ -11,7 +11,7 @@ This document tracks completed work, current progress, architectural decisions, 
 | :--- | :--- | :--- | :--- |
 | **Milestone 1** | Project structure, package setup, synthetic data, SQLite init, idempotent seed loader, test suite | **Completed** | Full in-memory and file-based test coverage passed |
 | **Milestone 2** | Cancellation detection, eligibility engine, waitlist matching, and safe booking confirmation | **Completed** | Parts A, B, and C verified with 54 tests across cancellation, matching, and booking |
-| **Milestone 3** | AI offer generation (OpenAI) with fallback templates & reply simulator | Not Started | Depends on Milestone 2 |
+| **Milestone 3** | AI offer generation (OpenAI) with fallback templates & reply simulator | **In Progress** | Part A (Offer Creation & Tracking) completed; Parts B & C pending |
 | **Milestone 4** | React + Vite UI (Dashboard, Appointments, Waitlist, Offers) | Not Started | Depends on Milestone 2 & 3 |
 | **Milestone 5** | End-to-end integration, safety validations, revenue recovery reporting | Not Started | Final milestone |
 
@@ -246,6 +246,98 @@ Created 5 realistic JSON datasets in `server/data/`:
 
 ---
 
+## Milestone 3 — Part A Implementation Summary: Offer Creation & Tracking
+
+### 1. Database Schema Reuse
+- Reused existing `offers` table defined during Milestone 1 in `config/database.js` without any migrations or schema alterations:
+  - `id TEXT PRIMARY KEY`
+  - `waitlistId TEXT NOT NULL REFERENCES waitlist(id)`
+  - `appointmentId TEXT NOT NULL REFERENCES appointments(id)`
+  - `customerId TEXT NOT NULL REFERENCES customers(id)`
+  - `messageText TEXT NOT NULL`
+  - `status TEXT NOT NULL DEFAULT 'pending_approval' CHECK (status IN ('pending_approval','approved','sent','accepted','declined','no_reply','expired'))`
+  - `generatedAt TEXT NOT NULL` (ISO-8601 timestamp)
+  - `approvedAt TEXT`
+  - `sentAt TEXT`
+  - `respondedAt TEXT`
+  - `aiGenerated INTEGER NOT NULL DEFAULT 0`
+
+### 2. Core Service (`services/offerService.js`)
+- **`createOffer(appointmentId, waitlistId, optionsOrDb, maybeDb)`**:
+  - **Immediate Transaction Isolation**: Uses `withTransaction` (`BEGIN IMMEDIATE`) to guard concurrent reads and writes.
+  - **Live State Revalidation**:
+    1. Validates slot existence and checks that `status === 'cancelled'` (throws 404 `APPOINTMENT_NOT_FOUND` or 400 `INVALID_APPOINTMENT_STATUS`).
+    2. Validates waitlist candidate existence and checks that `status === 'waiting'` (throws 404 `WAITLIST_NOT_FOUND` or 400 `INVALID_WAITLIST_STATUS`).
+    3. Revalidates staff qualification via `checkStaffQualification` (throws 400 `STAFF_NOT_QUALIFIED`).
+    4. Revalidates staff schedule boundaries, working days, breaks, and overlapping active bookings via `checkStaffAvailability` (throws 409 `STAFF_TIME_CONFLICT`).
+    5. Revalidates candidate eligibility: service match, dual consent (`customers.consentToOffers` and `waitlist.consentGiven`), dates, time bucket preference, staff preference, and customer overlapping active appointments (`CUSTOMER_DOUBLE_BOOKED` throws 409).
+  - **Duplicate Active Offer Prevention**:
+    - Queries for existing offers matching `(waitlistId, appointmentId)` in active statuses (`pending_approval`, `approved`, `sent`).
+    - Rejects duplicate active offers with 409 `DUPLICATE_ACTIVE_OFFER`.
+    - Allows creating a new offer if prior offers are in terminal states (`declined`, `expired`, `no_reply`).
+  - **Creation**: Inserts record with UUID, initial status (default `pending_approval`), `generatedAt` timestamp, and formatted or custom message text.
+- **`getOfferById(id, targetDb)`**:
+  - Retrieves an offer joined with customer details (`name`, `phone`, `email`), appointment schedule (`date`, `startTime`, `endTime`), service name, and staff name.
+- **`getOffers(filters, targetDb)`**:
+  - Queries offers with optional filters: `appointmentId`, `waitlistId`, `customerId`, and `status`, sorted by `generatedAt DESC`.
+- **`getOffersForAppointment(appointmentId, targetDb)`**:
+  - Retrieves all offers for a slot, checking slot existence first and throwing 404 `APPOINTMENT_NOT_FOUND` if nonexistent.
+- **`updateOfferStatus(offerId, newStatus, details, targetDb)`**:
+  - Validates `newStatus` against allowed enum values.
+  - Updates status and selectively records `approvedAt`, `sentAt`, or `respondedAt` timestamps based on lifecycle transition.
+
+### 3. API Routes & Modified Files
+- **New Files**:
+  - `server/services/offerService.js`: Core offer service logic, revalidation, and error handling.
+  - `server/routes/offers.js`: Express routes for offer management.
+  - `server/tests/offers.test.js`: Comprehensive automated test suite.
+- **Modified Files**:
+  - `server/app.js`: Mounted `app.use('/api/offers', require('./routes/offers'))`.
+  - `server/routes/appointments.js`: Added `GET /api/appointments/:id/offers` returning offers for a slot with HTTP 404 validation for nonexistent appointments.
+- **API Endpoints**:
+  - `POST /api/offers` — Create a validated offer linking waitlist candidate to cancelled appointment slot.
+  - `GET /api/offers` — Query offers with filters (`appointmentId`, `waitlistId`, `customerId`, `status`).
+  - `GET /api/offers/:id` — Fetch single offer with joined relational metadata.
+  - `PATCH /api/offers/:id/status` — Advance offer lifecycle status and record timestamps.
+  - `GET /api/appointments/:id/offers` — List offers for an appointment slot (returns HTTP 404 if slot does not exist).
+
+### 4. Automated Tests & Results (`tests/offers.test.js`)
+- 29 focused tests organized into 6 suites:
+  1. **Successful Offer Creation & Tracking** (7 tests):
+     - Creates default offer (`pending_approval`) with joined customer, staff, and service metadata.
+     - Creates offer with custom message and initial approved/sent status.
+     - Retrieves offer by ID.
+     - Queries offers with filters (`appointmentId`, `waitlistId`, `status`).
+     - Retrieves offers for an existing appointment slot via `getOffersForAppointment`.
+     - Validates HTTP 404 `APPOINTMENT_NOT_FOUND` when querying offers for nonexistent slot.
+     - Validates HTTP 400 `INVALID_INPUT` when appointment ID is empty.
+  2. **Appointment State Revalidation** (4 tests):
+     - Rejects missing ID (400), nonexistent appointment (404), confirmed appointment (400), completed appointment (400).
+  3. **Waitlist Candidate Revalidation** (3 tests):
+     - Rejects missing waitlist ID (400), nonexistent waitlist entry (404), non-waiting candidate (400).
+  4. **Live Eligibility Revalidation** (8 tests):
+     - Rejects service mismatch (400 `SERVICE_MISMATCH`).
+     - Rejects customer revoked consent (400 `NO_CUSTOMER_CONSENT`).
+     - Rejects waitlist revoked consent (400 `NO_WAITLIST_CONSENT`).
+     - Rejects date mismatch (400 `DATE_NOT_AVAILABLE`).
+     - Rejects time bucket mismatch (400 `TIME_SLOT_NOT_AVAILABLE`).
+     - Rejects preferred staff mismatch when `preferAnyStaff = 0` (400 `STAFF_PREFERENCE_MISMATCH`).
+     - Rejects staff active time conflict (409 `STAFF_TIME_CONFLICT`).
+     - Rejects customer active time conflict (409 `CUSTOMER_DOUBLE_BOOKED`).
+  5. **Duplicate Active Offer Prevention** (2 tests):
+     - Rejects duplicate active offer for same pair (409 `DUPLICATE_ACTIVE_OFFER`).
+     - Allows new offer after prior offer reaches terminal status (`declined`/`expired`).
+  6. **Offer Lifecycle Updates** (5 tests):
+     - Advances status to `approved` and populates `approvedAt`.
+     - Advances status to `sent` and populates `sentAt` and `approvedAt`.
+     - Transitions to terminal statuses (`declined`, `expired`).
+     - Rejects invalid status string (400).
+     - Rejects nonexistent offer ID (404).
+- **Test Suite Results**:
+  - Total test count across project: **96 tests passing (0 failing)** across 27 suites (initial run: 93 passed; 96 passed after `getOffersForAppointment` 404 validation test addition).
+
+---
+
 ## Architectural Decisions
 
 1. **Node 22 Built-in `node:sqlite` (`DatabaseSync`)**:
@@ -277,10 +369,13 @@ Created 5 realistic JSON datasets in `server/data/`:
 
 ---
 
-## Next Steps (Milestone 3)
+## Next Steps (Milestone 3 — Parts B & C)
 
-- Implement AI offer generation engine with OpenAI and robust fallback templates:
-  - Offer message drafting based on service, slot details, and customer name.
-  - Fallback deterministic template generator when OpenAI is unavailable or unconfigured.
-  - SMS/WhatsApp customer reply simulator to evaluate offer acceptance, declines, and expirations.
-  - Route handlers and tests for offer management and status transitions.
+- **Milestone 3 — Part B: AI Message Drafting & Fallback Templates**:
+  - Install `openai` package.
+  - Implement AI offer drafting service using OpenAI API with customer and appointment context.
+  - Implement deterministic template fallback engine when OpenAI is unavailable or API key is absent.
+- **Milestone 3 — Part C: Customer Reply Simulator**:
+  - Implement customer reply simulation endpoint (`POST /api/offers/:id/reply`) supporting `YES`, `NO`, and simulated timeouts.
+  - Automatically transition accepted offers to booking confirmation via `confirmBooking()`.
+  - Handle offer rejection and expiration transitions.
