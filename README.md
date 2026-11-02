@@ -18,9 +18,18 @@ The application will match cancelled slots with eligible waitlist customers, pre
 - Language: JavaScript
 - AI: OpenAI API, added after the core booking workflow
 
-## Project Status
+## Project Status & Roadmap
 
-Milestone 1 complete: Project structure, synthetic datasets, SQLite schema, safe idempotent seed loader, and automated test suite.
+- **Milestone 1 — Project Setup and Synthetic Data (Completed)**: Project structure, package setup, synthetic datasets, SQLite schema, idempotent seed loader, and base automated test suite.
+- **Milestone 2 — Core Booking and Recovery Logic (Completed)**: Cancellation detection, eligibility matching engine, and atomic booking recovery confirmation with double-booking prevention.
+- **Milestone 3 — Offers and Revenue Tracking (Completed)**:
+  - **Part A**: Offer creation and tracking, live revalidation, duplicate active offer prevention, lifecycle status updates, and offer query endpoints.
+  - **Part B**: OpenAI-powered message drafting with privacy guards, prompt builder, deterministic fallback templates (standard, priority, returning client), and human approval enforcement.
+  - **Part C**: Revenue tracking and dashboard metrics calculation, appointment recovery rates, offer acceptance rates, service-level revenue breakdown, and `GET /api/dashboard/metrics`.
+  - *Verification*: 123 automated tests passed, 0 failed, 36 suites.
+- **Milestone 4 — Genuine AI Agent with OpenAI Tool Calling (Not Started)**: Implementation of a genuine AI agent capable of using controlled backend tools to support the appointment recovery workflow (beyond message generation). Deterministic backend rules continue enforcing eligibility, consent, human approval, and booking safety.
+- **Milestone 5 — React Frontend and Dashboard UI (Not Started)**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics.
+- **Milestone 6 — Integration, Testing, Security, Documentation and Certification Demo (Not Started)**: End-to-end integration, comprehensive testing, security review, documentation, and a certification-ready demonstration.
 
 ## Development Approach
 
@@ -30,7 +39,7 @@ Work will be organized into feature branches, tested, and merged into `main` thr
 
 - Synthetic data will be used during development.
 - Initial messaging will require appropriate consent and human approval.
-- Live WhatsApp integration is outside the initial scope.
+- Live WhatsApp integration remains deferred until the basic application is working.
 - API keys and other secrets must never be committed.
 
 ## Project Structure
@@ -67,11 +76,62 @@ salon-revenue-recovery-agent/
     ├── middleware/
     │   ├── errorHandler.js   # Centralized error handler
     │   └── requestLogger.js  # HTTP request logger
+    ├── routes/
+    │   ├── appointments.js   # Cancellation, matching, booking, and slot offers routes
+    │   ├── dashboard.js      # Revenue recovery metrics and dashboard endpoint
+    │   └── offers.js         # Offer creation, querying, and status updates routes
+    ├── services/
+    │   ├── cancellationService.js  # Appointment cancellation detection and validation
+    │   ├── matchingService.js      # Deterministic candidate qualification & eligibility engine
+    │   ├── bookingService.js       # Safe booking confirmation and slot recovery
+    │   ├── offerService.js         # Offer generation, tracking, and lifecycle management
+    │   ├── messageDraftingService.js # AI prompt builder, OpenAI drafting, and fallback templates
+    │   └── revenueService.js       # Revenue tracking, recovery rates, and analytics
     └── tests/
-        └── setup.test.js     # Milestone 1 database and seed test suite
+        ├── setup.test.js           # Milestone 1 database and seed test suite
+        ├── cancellation.test.js    # Milestone 2 Part A cancellation detection tests
+        ├── matching.test.js        # Milestone 2 Part B waitlist matching tests
+        ├── booking.test.js         # Milestone 2 Part C booking confirmation tests
+        ├── offers.test.js          # Milestone 3 Part A offer creation and tracking tests
+        ├── messageDrafting.test.js # Milestone 3 Part B AI drafting and fallback template tests
+        └── revenue.test.js         # Milestone 3 Part C revenue metrics and dashboard tests
 ```
 
-## Getting Started (Milestone 1)
+## API Endpoints
+
+### Dashboard Metrics
+
+- **`GET /api/dashboard/metrics`**: Computes and returns high-level revenue recovery analytics, booking conversion rates, offer acceptance metrics, and service-level revenue breakdowns.
+
+#### Example Response (`GET /api/dashboard/metrics`):
+
+```json
+{
+  "totalRecoveredBookings": 2,
+  "totalRecoveredRevenue": 9500,
+  "currency": "PKR",
+  "totalOffersCreated": 5,
+  "totalAcceptedOffers": 2,
+  "offerAcceptanceRate": 40,
+  "appointmentRecoveryRate": 50,
+  "revenueByService": [
+    {
+      "serviceId": "srv-003",
+      "serviceName": "HydraFacial Glow",
+      "recoveredBookings": 1,
+      "recoveredRevenue": 6500
+    },
+    {
+      "serviceId": "srv-001",
+      "serviceName": "Signature Balayage & Cut",
+      "recoveredBookings": 1,
+      "recoveredRevenue": 3000
+    }
+  ]
+}
+```
+
+## Getting Started
 
 ### Prerequisites
 
@@ -89,11 +149,14 @@ node config/database.js
 
 This operation is safe and idempotent: re-running it will detect existing records and skip re-insertion without duplicating data.
 
-### Running Milestone 1 Tests
+### Running Automated Tests
 
-Execute the automated test suite verifying JSON dataset integrity, SQLite table creation, idempotent seed loading, and foreign key constraint enforcement:
+Execute the complete automated test suite across all completed milestones (dataset schemas, database constraints, cancellation detection, waitlist matching, safe booking recovery, offer creation/lifecycle, AI message drafting, and revenue tracking metrics):
 
 ```bash
 cd server
 npm test
 ```
+
+All 123 tests run in-memory using Node.js built-in `node:test` and `node:sqlite` with zero external dependencies and zero API costs.
+

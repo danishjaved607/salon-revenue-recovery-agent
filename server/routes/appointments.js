@@ -23,6 +23,11 @@ const {
   confirmBooking,
   BookingConfirmationError,
 } = require('../services/bookingService');
+const {
+  getOffers,
+  getOffersForAppointment,
+  OfferError,
+} = require('../services/offerService');
 
 // GET /api/appointments/cancelled — List all cancelled appointments
 router.get('/cancelled', (req, res, next) => {
@@ -155,6 +160,29 @@ router.post('/:id/confirm-recovery', (req, res, next) => {
     res.json(result);
   } catch (err) {
     if (err instanceof BookingConfirmationError) {
+      return res.status(err.statusCode).json({
+        success: false,
+        error: {
+          code: err.code,
+          message: err.message,
+        },
+      });
+    }
+    next(err);
+  }
+});
+
+// GET /api/appointments/:id/offers — List all offers generated for this appointment slot
+router.get('/:id/offers', (req, res, next) => {
+  try {
+    const offers = getOffersForAppointment(req.params.id);
+    res.json({
+      success: true,
+      count: offers.length,
+      offers,
+    });
+  } catch (err) {
+    if (err instanceof OfferError) {
       return res.status(err.statusCode).json({
         success: false,
         error: {
