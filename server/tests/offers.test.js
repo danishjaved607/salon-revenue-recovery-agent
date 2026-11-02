@@ -77,20 +77,37 @@ describe('Milestone 3 — Part A: Successful Offer Creation & Tracking', () => {
     memDb.close();
   });
 
-  it('creates an offer with custom messageText and initial approved/sent status', () => {
+  it('creates an offer with custom messageText and initial approved status', () => {
     const memDb = setupTestDb();
 
     const customText = 'Special priority slot available for you!';
     const offer = createOffer('apt-001', 'wl-001', {
       messageText: customText,
-      status: 'sent',
+      status: 'approved',
     }, memDb);
 
     assert.strictEqual(offer.messageText, customText);
-    assert.strictEqual(offer.status, 'sent');
+    assert.strictEqual(offer.status, 'approved');
     assert.ok(offer.generatedAt);
-    assert.ok(offer.approvedAt, 'approvedAt should be set when created in sent status');
-    assert.ok(offer.sentAt, 'sentAt should be set when created in sent status');
+    assert.ok(offer.approvedAt, 'approvedAt should be set when created in approved status');
+    assert.strictEqual(offer.sentAt, null);
+
+    memDb.close();
+  });
+
+  it('rejects creating an offer directly with status sent (human approval required)', () => {
+    const memDb = setupTestDb();
+
+    assert.throws(
+      () => createOffer('apt-001', 'wl-001', { status: 'sent' }, memDb),
+      (err) => {
+        assert.ok(err instanceof OfferError);
+        assert.strictEqual(err.code, 'INVALID_STATUS');
+        assert.strictEqual(err.statusCode, 400);
+        assert.match(err.message, /must be approved/i);
+        return true;
+      }
+    );
 
     memDb.close();
   });
@@ -570,14 +587,31 @@ describe('Milestone 3 — Part A: Offer Lifecycle Updates', () => {
     memDb.close();
   });
 
-  it('updates offer status to sent and sets sentAt timestamp', () => {
+  it('enforces human approval sequence: pending_approval -> approved -> sent', () => {
     const memDb = setupTestDb();
     const offer = createOffer('apt-001', 'wl-001', memDb);
 
-    const updated = updateOfferStatus(offer.id, 'sent', {}, memDb);
-    assert.strictEqual(updated.status, 'sent');
-    assert.ok(updated.sentAt, 'sentAt must be set');
-    assert.ok(updated.approvedAt, 'approvedAt must also be populated when sent');
+    // Attempting to send an unapproved offer directly must be rejected
+    assert.throws(
+      () => updateOfferStatus(offer.id, 'sent', {}, memDb),
+      (err) => {
+        assert.ok(err instanceof OfferError);
+        assert.strictEqual(err.code, 'OFFER_NOT_APPROVED');
+        assert.strictEqual(err.statusCode, 400);
+        assert.match(err.message, /must be approved before being sent/i);
+        return true;
+      }
+    );
+
+    // Approve the offer first
+    const approved = updateOfferStatus(offer.id, 'approved', {}, memDb);
+    assert.strictEqual(approved.status, 'approved');
+    assert.ok(approved.approvedAt);
+
+    // Now sending succeeds
+    const sent = updateOfferStatus(offer.id, 'sent', {}, memDb);
+    assert.strictEqual(sent.status, 'sent');
+    assert.ok(sent.sentAt);
 
     memDb.close();
   });

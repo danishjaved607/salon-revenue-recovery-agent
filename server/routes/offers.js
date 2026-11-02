@@ -10,6 +10,7 @@ const express = require('express');
 const router = express.Router();
 const {
   createOffer,
+  createOfferAsync,
   getOfferById,
   getOffers,
   updateOfferStatus,
@@ -17,10 +18,10 @@ const {
 } = require('../services/offerService');
 
 // POST /api/offers — Create an offer linking an eligible waitlist entry to a cancelled slot
-router.post('/', (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
     const { appointmentId, waitlistId, messageText, status } = req.body || {};
-    const offer = createOffer(appointmentId, waitlistId, { messageText, status });
+    const offer = await createOfferAsync(appointmentId, waitlistId, { messageText, status });
     res.status(201).json({
       success: true,
       message: 'Offer created successfully.',

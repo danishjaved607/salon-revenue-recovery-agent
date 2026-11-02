@@ -25,6 +25,10 @@ const {
   checkStaffAvailability,
   checkCandidateEligibility,
 } = require('./matchingService');
+const {
+  generateFallbackMessage,
+  draftOfferMessage,
+} = require('./messageDraftingService');
 
 class OfferError extends Error {
   constructor(message, code, statusCode = 400) {
@@ -342,11 +346,74 @@ function createOffer(appointmentId, waitlistId, optionsOrDb = {}, maybeDb = unde
       );
     }
 
+    // Human approval requirement: offers cannot be created directly in 'sent' status
+    if (initialStatus === 'sent') {
+      throw new OfferError(
+        'Offers cannot be created directly with status "sent". Offers must be approved by staff before being sent.',
+        'INVALID_STATUS',
+        400
+      );
+    }
+
     const generatedAt = options.generatedAt || new Date().toISOString();
-    const approvedAt = options.approvedAt || (initialStatus === 'approved' || initialStatus === 'sent' ? generatedAt : null);
-    const sentAt = options.sentAt || (initialStatus === 'sent' ? generatedAt : null);
-    const messageText = options.messageText ||
-      `Hello ${candidate.customerName}, a slot has opened up for ${service.name} on ${appointment.date} at ${appointment.startTime} with ${staff.name}. Reply YES to confirm or NO to pass.`;
+    const approvedAt = options.approvedAt || (initialStatus === 'approved' ? generatedAt : null);
+    const sentAt = null;
+
+    let messageText;
+    let aiGenerated = 0;
+
+    if (options.messageText && typeof options.messageText === 'string') {
+      // Manual custom message text provided by caller — client cannot claim AI generation
+      messageText = options.messageText.trim();
+      aiGenerated = 0;
+    } else if (options.draftedMessage && typeof options.draftedMessage.messageText === 'string') {
+      // Pre-drafted message from AI drafting service
+      messageText = options.draftedMessage.messageText;
+      aiGenerated = options.draftedMessage.aiGenerated ? 1 : 0;
+    } else {
+      // Deterministic fallback template
+      let bookingHistory = [];
+      try {
+        bookingHistory = JSON.parse(candidate.customerBookingHistory || '[]');
+      } catch (_) {}
+
+      let availableTimeSlots = [];
+      try {
+        availableTimeSlots = JSON.parse(candidate.availableTimeSlots || '[]');
+      } catch (_) {}
+
+      const context = {
+        customer: {
+          name: candidate.customerName,
+          bookingHistory,
+        },
+        service: {
+          id: service.id,
+          name: service.name,
+          category: service.category,
+          durationMinutes: service.durationMinutes,
+          price: service.price,
+          currency: service.currency,
+        },
+        appointment: {
+          id: appointment.id,
+          date: appointment.date,
+          startTime: appointment.startTime,
+          endTime: appointment.endTime,
+        },
+        staff: {
+          id: staff.id,
+          name: staff.name,
+        },
+        waitlist: {
+          id: candidate.id,
+          priority: candidate.priority,
+          availableTimeSlots,
+        },
+      };
+      messageText = generateFallbackMessage(context);
+      aiGenerated = 0;
+    }
 
     targetDb.prepare(`
       INSERT INTO offers (
@@ -364,7 +431,7 @@ function createOffer(appointmentId, waitlistId, optionsOrDb = {}, maybeDb = unde
       generatedAt,
       approvedAt,
       sentAt,
-      options.aiGenerated ? 1 : 0
+      aiGenerated
     );
 
     return getOfferById(offerId, targetDb);
@@ -396,6 +463,15 @@ function updateOfferStatus(offerId, newStatus, details = {}, targetDb = db) {
     throw new OfferError(`Offer with ID "${offerId}" does not exist.`, 'OFFER_NOT_FOUND', 404);
   }
 
+  // Human approval requirement: offer cannot transition directly from pending_approval to sent
+  if (newStatus === 'sent' && existing.status !== 'approved') {
+    throw new OfferError(
+      `Cannot send offer "${offerId}": offer must be approved before being sent (current status: "${existing.status}").`,
+      'OFFER_NOT_APPROVED',
+      400
+    );
+  }
+
   const timestamp = details.timestamp || new Date().toISOString();
   let approvedAt = existing.approvedAt;
   let sentAt = existing.sentAt;
@@ -404,7 +480,6 @@ function updateOfferStatus(offerId, newStatus, details = {}, targetDb = db) {
   if (newStatus === 'approved') {
     approvedAt = details.approvedAt || timestamp;
   } else if (newStatus === 'sent') {
-    if (!approvedAt) approvedAt = timestamp;
     sentAt = details.sentAt || timestamp;
   } else if (['accepted', 'declined', 'no_reply'].includes(newStatus)) {
     respondedAt = details.respondedAt || timestamp;
@@ -447,6 +522,101 @@ function getOffersForAppointment(appointmentId, targetDb = db) {
   return getOffers({ appointmentId }, targetDb);
 }
 
+/**
+ * Asynchronously create an offer, utilizing AI message drafting with automatic fallback.
+ *
+ * @param {string} appointmentId - Cancelled appointment slot ID
+ * @param {string} waitlistId - Waitlist entry ID
+ * @param {object|DatabaseSync} [optionsOrDb={}] - Options (status, custom messageText, openAi overrides) or db
+ * @param {DatabaseSync} [maybeDb] - SQLite database instance
+ * @returns {Promise<object>} Created offer record
+ */
+async function createOfferAsync(appointmentId, waitlistId, optionsOrDb = {}, maybeDb = undefined) {
+  let targetDb = db;
+  let options = {};
+
+  if (optionsOrDb && typeof optionsOrDb.prepare === 'function') {
+    targetDb = optionsOrDb;
+  } else {
+    options = optionsOrDb || {};
+    if (maybeDb && typeof maybeDb.prepare === 'function') {
+      targetDb = maybeDb;
+    }
+  }
+
+  // If no manual custom message was provided, draft using AI (with automated fallback)
+  if (!options.messageText) {
+    const appointment = getAppointmentById(appointmentId, targetDb);
+    const candidate = targetDb.prepare(`
+      SELECT
+        w.id, w.customerId, w.serviceId, w.priority, w.availableTimeSlots,
+        c.name AS customerName, c.bookingHistory AS customerBookingHistory,
+        s.name AS serviceName, s.category AS serviceCategory, s.durationMinutes AS serviceDurationMinutes,
+        s.price AS servicePrice, s.currency AS serviceCurrency
+      FROM waitlist w
+      JOIN customers c ON w.customerId = c.id
+      JOIN services s  ON w.serviceId = s.id
+      WHERE w.id = ?
+    `).get(waitlistId);
+
+    if (appointment && candidate) {
+      const staff = targetDb.prepare('SELECT * FROM staff WHERE id = ?').get(appointment.staffId);
+
+      let bookingHistory = [];
+      try {
+        bookingHistory = JSON.parse(candidate.customerBookingHistory || '[]');
+      } catch (_) {}
+
+      let availableTimeSlots = [];
+      try {
+        availableTimeSlots = JSON.parse(candidate.availableTimeSlots || '[]');
+      } catch (_) {}
+
+      const context = {
+        customer: {
+          name: candidate.customerName,
+          bookingHistory,
+        },
+        service: {
+          id: candidate.serviceId,
+          name: candidate.serviceName,
+          category: candidate.serviceCategory,
+          durationMinutes: candidate.serviceDurationMinutes,
+          price: candidate.servicePrice,
+          currency: candidate.serviceCurrency,
+        },
+        appointment: {
+          id: appointment.id,
+          date: appointment.date,
+          startTime: appointment.startTime,
+          endTime: appointment.endTime,
+        },
+        staff: {
+          id: staff ? staff.id : appointment.staffId,
+          name: staff ? staff.name : 'our specialist',
+        },
+        waitlist: {
+          id: candidate.id,
+          priority: candidate.priority,
+          availableTimeSlots,
+        },
+      };
+
+      const draftingOptions = {
+        client: options.openAiClient,
+        apiKey: options.openAiApiKey,
+        model: options.openAiModel,
+        timeoutMs: options.openAiTimeoutMs,
+      };
+
+      const drafted = await draftOfferMessage(context, draftingOptions);
+      options = { ...options, draftedMessage: drafted };
+    }
+  }
+
+  return createOffer(appointmentId, waitlistId, options, targetDb);
+}
+
 module.exports = {
   OfferError,
   withTransaction,
@@ -454,6 +624,6 @@ module.exports = {
   getOffers,
   getOffersForAppointment,
   createOffer,
+  createOfferAsync,
   updateOfferStatus,
 };
-

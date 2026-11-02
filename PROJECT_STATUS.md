@@ -9,11 +9,12 @@ This document tracks completed work, current progress, architectural decisions, 
 
 | Milestone | Scope | Status | Notes |
 | :--- | :--- | :--- | :--- |
-| **Milestone 1** | Project structure, package setup, synthetic data, SQLite init, idempotent seed loader, test suite | **Completed** | Full in-memory and file-based test coverage passed |
-| **Milestone 2** | Cancellation detection, eligibility engine, waitlist matching, and safe booking confirmation | **Completed** | Parts A, B, and C verified with 54 tests across cancellation, matching, and booking |
-| **Milestone 3** | AI offer generation (OpenAI) with fallback templates & reply simulator | **In Progress** | Part A (Offer Creation & Tracking) completed; Parts B & C pending |
-| **Milestone 4** | React + Vite UI (Dashboard, Appointments, Waitlist, Offers) | Not Started | Depends on Milestone 2 & 3 |
-| **Milestone 5** | End-to-end integration, safety validations, revenue recovery reporting | Not Started | Final milestone |
+| **Milestone 1** | **Project Setup and Synthetic Data**: Project structure, package setup, synthetic datasets, SQLite init, idempotent seed loader, test suite | **Completed** | Full in-memory and file-based test coverage passed |
+| **Milestone 2** | **Core Booking and Recovery Logic**: Cancellation detection, eligibility engine, waitlist matching, and safe booking confirmation | **Completed** | Parts A, B, and C verified with 54 tests across cancellation, matching, and booking |
+| **Milestone 3** | **Offers and Revenue Tracking**: Part A (Offer Creation & Tracking), Part B (AI Message Drafting & Fallbacks), Part C (Revenue Tracking & Dashboard Metrics) | **Completed** | Parts A, B, and C verified with 49 tests (123 total project tests passed, 0 failed, 36 suites) |
+| **Milestone 4** | **Genuine AI Agent with OpenAI Tool Calling**: Controlled backend tools for appointment recovery workflow (inspecting cancellations, querying waitlist matches, drafting offers, booking recovery); deterministic safety & approval rules strictly preserved | **Not Started** | Next milestone |
+| **Milestone 5** | **React Frontend and Dashboard UI**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics | **Not Started** | Depends on backend & AI agent API |
+| **Milestone 6** | **Integration, Testing, Security, Documentation and Certification Demo**: End-to-end integration, comprehensive testing, security review, documentation, and certification-ready demonstration | **Not Started** | Final milestone |
 
 ---
 
@@ -338,6 +339,101 @@ Created 5 realistic JSON datasets in `server/data/`:
 
 ---
 
+## Milestone 3 — Part B Implementation Summary: AI Message Drafting & Fallback Templates
+
+### 1. Dedicated AI Message Drafting Service (`services/messageDraftingService.js`)
+- **`buildOfferPrompt({ customer, service, appointment, staff, waitlist })`**:
+  - Generates prompt-injection-safe prompts using verified factual context (customer name, returning client indicator, service name, duration, price, currency, slot date, start time, staff specialist name).
+  - Explicitly strips customer PII: phone numbers, email addresses, and raw booking history IDs are never passed to the model.
+  - Instructs the model to treat data strictly as passive context (not instructions), enforces concise SMS-friendly length (under 220 chars), anti-hallucination constraints (no invented discounts/times), and the mandatory Call-To-Action (CTA): `"Reply YES to confirm or NO to pass."`.
+- **`generateFallbackMessage(context)`**:
+  - Deterministic template generator handling 3 distinct scenarios:
+    1. **Returning Client**: Welcomes back returning clients acknowledging relationship.
+    2. **Priority Waitlist**: Highlights priority waitlist availability for priority 1 entries.
+    3. **Standard Slot**: Friendly, direct slot notification.
+  - Guarantees message under 250 characters and strictly ends with the mandatory CTA.
+- **`draftOfferMessage(context, options)`**:
+  - Securely reads `OPENAI_API_KEY`, `OPENAI_MODEL` (default: `gpt-4o-mini`), and `OPENAI_TIMEOUT_MS` (default: `5000ms`).
+  - Supports dependency injection for testing (`options.client`, `options.apiKey`, `options.timeoutMs`).
+  - Automatically degrades to deterministic fallback without throwing on:
+    - Missing or empty API key.
+    - Network timeout or connection drop.
+    - Rate limit (429) or quota exhaustion.
+    - Authentication errors (401).
+    - Server errors (500).
+    - Empty or whitespace-only response.
+  - Guarantees CTA inclusion even if the model omitted it.
+  - Accurately reports `{ messageText, aiGenerated: boolean, reason?: string }`.
+  - Zero sensitive data logging.
+
+### 2. Offer Creation Integration & Human Approval Enforcement
+- **Offer Creation Workflow (`services/offerService.js`)**:
+  - `createOffer` disallows creating an offer directly in `sent` status (HTTP 400 `INVALID_STATUS`).
+  - When caller supplies manual `messageText`, forces `aiGenerated = 0` (preventing false claims).
+  - When called synchronously without pre-drafted text, utilizes `generateFallbackMessage` using verified candidate/appointment context.
+  - `createOfferAsync` provides asynchronous offer generation, orchestrating `draftOfferMessage` before delegating to transactional `createOffer`.
+- **API Routes (`routes/offers.js`)**:
+  - `POST /api/offers` integrated with `createOfferAsync` for automated AI drafting with fallback.
+- **Human Approval Enforcement (`updateOfferStatus`)**:
+  - Enforces explicit lifecycle sequence: `pending_approval` → `approved` → `sent`.
+  - Rejects attempts to transition an unapproved offer directly to `sent` with HTTP 400 `OFFER_NOT_APPROVED`.
+
+### 3. Automated Tests & Results (`tests/messageDrafting.test.js` & `tests/offers.test.js`)
+- 19 new tests added in `tests/messageDrafting.test.js`:
+  1. **Prompt Builder & Context Safety** (4 tests): CTA enforcement, factual context injection, PII exclusion, client categorization.
+  2. **Deterministic Fallback Templates** (3 tests): Standard slot, returning client, and priority waitlist scenarios with length validation.
+  3. **Mocked OpenAI Message Drafting** (2 tests): Successful generation with `aiGenerated = true` and CTA auto-append.
+  4. **Fallback Resilience & Error Handling** (6 tests): Missing key, timeout, 429 quota exhaustion, 401 auth, 500 server error, empty response.
+  5. **Async Offer Creation Integration** (3 tests): AI drafting with `aiGenerated = 1`, fallback with `aiGenerated = 0`, and manual override forcing `aiGenerated = 0`.
+  6. **Human Approval Enforcement** (updated in `tests/offers.test.js`): Rejection of unapproved send (`OFFER_NOT_APPROVED` 400) and disallowing direct creation in `sent` status (`INVALID_STATUS` 400).
+- **Test Suite Results**:
+  - Total test count across project: **115 tests passing (0 failing)** across 32 suites (zero external network calls, zero API costs).
+
+---
+
+## Milestone 3 — Part C Implementation Summary: Revenue Tracking & Dashboard Metrics
+
+### 1. Revenue Service (`services/revenueService.js`)
+- **`getRevenueMetrics(targetDb = db)`**:
+  - **Relational Aggregation**: Joins `appointments` with `services` on `serviceId` to sum actual catalog prices for recovered bookings, eliminating redundant price data duplication.
+  - **Key Metrics Calculated**:
+    - `recoveredBookingsCount`: Total count of appointments where `status = 'recovered'`.
+    - `recoveredRevenue`: Sum of service prices for all recovered appointments.
+    - `cancelledBookingsCount`: Count of currently cancelled appointments.
+    - `lostRevenue`: Total lost revenue from currently cancelled appointments.
+    - `totalCancellations`: Total historical cancellations (`recoveredCount + cancelledCount`).
+    - `appointmentRecoveryRate`: Percentage of cancelled slots successfully recovered (`recovered / totalCancellations * 100`).
+    - `offersCreatedCount`: Total count of records in `offers`.
+    - `offersAcceptedCount`: Count of offers where `status = 'accepted'`.
+    - `offerAcceptanceRate`: Percentage of offers accepted (`accepted / totalOffers * 100`).
+    - `offersBreakdownByStatus`: Full distribution across `pending_approval`, `approved`, `sent`, `accepted`, `declined`, `expired`.
+    - `currency`: Dynamic currency resolution from services catalog (defaults to `'PKR'`).
+    - `breakdownByService`: Clean service-level breakdown containing `serviceId`, `serviceName`, `category`, `price`, `currency`, `recoveredCount`, and `recoveredRevenue` ordered by revenue descending.
+  - **Zero-Denominator Safety**: Uses `safePercentage()` to guarantee safe return of `0` instead of `NaN` or `Infinity` when denominators are zero.
+
+### 2. Dashboard API Route (`routes/dashboard.js`)
+- Mounted in `app.js` under `/api/dashboard`:
+  - `GET /api/dashboard/metrics`: Returns `{ success: true, metrics }` providing the full payload needed by the future frontend dashboard.
+  - Centralized error handling via Express `next(err)`.
+
+### 3. Automated Tests & Results (`tests/revenue.test.js`)
+- 8 new tests organized into 4 suites:
+  1. **Revenue Metrics Initial State** (3 tests):
+     - Validates initial 0 recovered count and 0 revenue on fresh seed data.
+     - Validates zero offers and 0% acceptance rate on seed data.
+     - Validates complete 10-service breakdown with catalog attributes.
+  2. **Zero-Denominator Handling** (2 tests):
+     - Unit test for `safePercentage` asserting `0` on zero or negative denominators.
+     - Empty database test asserting safe metrics calculation without exceptions.
+  3. **Workflow Integration & Dynamic Calculation** (2 tests):
+     - Verifies metric updates when an appointment is recovered through `confirmBooking()` (revenue increases by exact service price, recovery rate updates, offer transitions to accepted, acceptance rate reaches 100%).
+     - Verifies multiple recoveries across different services and prices (`svc-001` + `svc-003` = 14,500 PKR, recovery rate = 33.33%).
+  4. **Dashboard Route Contract** (1 test):
+     - Verifies complete payload structure matching the frontend dashboard specification.
+- **Total Test Suite Count**: **123 tests passing (0 failing)** across 36 suites.
+
+---
+
 ## Architectural Decisions
 
 1. **Node 22 Built-in `node:sqlite` (`DatabaseSync`)**:
@@ -358,6 +454,14 @@ Created 5 realistic JSON datasets in `server/data/`:
    - Minute-from-midnight conversion (`timeToMinutes`) and standard interval intersection (`startA < endB && endA > startB`) provide timezone-safe, sub-minute precision schedule collision detection.
 8. **Relational Foreign Key Constraints**:
    - `PRAGMA foreign_keys = ON` enforced at SQLite connection opening to guarantee data consistency.
+9. **Graceful AI Degradation & Privacy Sandbox**:
+   - AI drafting strictly treats client data as read-only passive context, never passes direct PII (phone/email), and always falls back to deterministic templates without throwing errors or blocking bookings.
+10. **Human-in-the-Loop Gating**:
+    - AI-generated offers must be created in `pending_approval` and require explicit human approval before being marked as `sent`.
+11. **Relational Revenue Aggregation (Zero Redundant Price Duplication)**:
+    - Calculates recovered revenue dynamically by joining `appointments.serviceId` with `services.price`. Avoids historical price schema bloat while adhering to current single-salon catalog requirements.
+12. **Zero-Denominator Safe Arithmetic**:
+    - All rate calculations (`appointmentRecoveryRate`, `offerAcceptanceRate`) use safe division guards returning `0` rather than `NaN` or `Infinity`.
 
 ---
 
@@ -365,17 +469,19 @@ Created 5 realistic JSON datasets in `server/data/`:
 
 - Node.js emits an `ExperimentalWarning: SQLite is an experimental feature` log in Node 22, which is expected for `node:sqlite` and does not affect runtime reliability or test execution.
 - Single-process in-memory SQLite instances are inherently isolated per test runner thread; production environments using file-based SQLite rely on WAL mode and `BEGIN IMMEDIATE` for cross-process concurrency safety.
-- No frontend screens or AI endpoints exist in this milestone, as strictly governed by Milestone scope boundaries.
+- Live WhatsApp/SMS messaging transport remains deferred until the basic application is fully operational; offers currently transition to `sent` through human approval, with simulated customer responses (YES, NO, and no-response) supporting booking recovery workflows.
+- Revenue calculations currently reflect active catalog service pricing; historical price versioning is not implemented as per Milestone 3 constraints.
 
 ---
 
-## Next Steps (Milestone 3 — Parts B & C)
+## Next Steps (Milestone 4 — Genuine AI Agent with OpenAI Tool Calling)
 
-- **Milestone 3 — Part B: AI Message Drafting & Fallback Templates**:
-  - Install `openai` package.
-  - Implement AI offer drafting service using OpenAI API with customer and appointment context.
-  - Implement deterministic template fallback engine when OpenAI is unavailable or API key is absent.
-- **Milestone 3 — Part C: Customer Reply Simulator**:
-  - Implement customer reply simulation endpoint (`POST /api/offers/:id/reply`) supporting `YES`, `NO`, and simulated timeouts.
-  - Automatically transition accepted offers to booking confirmation via `confirmBooking()`.
-  - Handle offer rejection and expiration transitions.
+- **Milestone 4: Genuine AI Agent with OpenAI Tool Calling (Next Milestone)**:
+  - Implement a genuine AI agent capable of using controlled backend tools to support the appointment recovery workflow (more than simply generating offer messages).
+  - Provide controlled tool interfaces for the agent to inspect cancellations, query eligible waitlist matches, draft personalized offers, and trigger booking confirmation workflows.
+  - Preserve strict deterministic backend rules: eligibility matching, staff availability, customer consent, human approval, and double-booking prevention remain enforced at the service level.
+  - Maintain simulated YES, NO, and no-response handling for customer replies.
+
+- **Upcoming Milestones**:
+  - **Milestone 5 — React Frontend and Dashboard UI**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated responses, recovered bookings, and revenue metrics.
+  - **Milestone 6 — Integration, Testing, Security, Documentation and Certification Demo**: End-to-end integration, comprehensive testing, security review, documentation, and a certification-ready demonstration.
