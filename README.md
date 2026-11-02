@@ -27,7 +27,11 @@ The application will match cancelled slots with eligible waitlist customers, pre
   - **Part B**: OpenAI-powered message drafting with privacy guards, prompt builder, deterministic fallback templates (standard, priority, returning client), and human approval enforcement.
   - **Part C**: Revenue tracking and dashboard metrics calculation, appointment recovery rates, offer acceptance rates, service-level revenue breakdown, and `GET /api/dashboard/metrics`.
   - *Verification*: 123 automated tests passed, 0 failed, 36 suites.
-- **Milestone 4 — Genuine AI Agent with OpenAI Tool Calling (Not Started)**: Implementation of a genuine AI agent capable of using controlled backend tools to support the appointment recovery workflow (beyond message generation). Deterministic backend rules continue enforcing eligibility, consent, human approval, and booking safety.
+- **Milestone 4 — Genuine AI Agent with OpenAI Tool Calling (In Progress)**:
+  - **Part A (Completed)**: Agent foundation, safety system prompt, 7 approved OpenAI function tool definitions (`additionalProperties: false`), schema-based argument validation, conversation history validation, PII sanitization, and multi-turn tool-calling loop with mock client dependency injection.
+  - **Part B (In Progress)**: Tool integration and recovery workflow orchestration (exposing agent endpoints and integrating tools with domain services).
+  - **Part C (Pending)**: Customer reply simulation (YES, NO, NO_REPLY) and automated booking transitions.
+  - *Verification*: 154 automated tests passed, 0 failed, 41 suites.
 - **Milestone 5 — React Frontend and Dashboard UI (Not Started)**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics.
 - **Milestone 6 — Integration, Testing, Security, Documentation and Certification Demo (Not Started)**: End-to-end integration, comprehensive testing, security review, documentation, and a certification-ready demonstration.
 
@@ -81,6 +85,7 @@ salon-revenue-recovery-agent/
     │   ├── dashboard.js      # Revenue recovery metrics and dashboard endpoint
     │   └── offers.js         # Offer creation, querying, and status updates routes
     ├── services/
+    │   ├── agentService.js         # Genuine AI agent foundation, tool definitions & tool-calling loop
     │   ├── cancellationService.js  # Appointment cancellation detection and validation
     │   ├── matchingService.js      # Deterministic candidate qualification & eligibility engine
     │   ├── bookingService.js       # Safe booking confirmation and slot recovery
@@ -94,7 +99,8 @@ salon-revenue-recovery-agent/
         ├── booking.test.js         # Milestone 2 Part C booking confirmation tests
         ├── offers.test.js          # Milestone 3 Part A offer creation and tracking tests
         ├── messageDrafting.test.js # Milestone 3 Part B AI drafting and fallback template tests
-        └── revenue.test.js         # Milestone 3 Part C revenue metrics and dashboard tests
+        ├── revenue.test.js         # Milestone 3 Part C revenue metrics and dashboard tests
+        └── agent.test.js           # Milestone 4 Part A AI agent foundation and tool-calling tests
 ```
 
 ## API Endpoints
@@ -151,12 +157,12 @@ This operation is safe and idempotent: re-running it will detect existing record
 
 ### Running Automated Tests
 
-Execute the complete automated test suite across all completed milestones (dataset schemas, database constraints, cancellation detection, waitlist matching, safe booking recovery, offer creation/lifecycle, AI message drafting, and revenue tracking metrics):
+Execute the complete automated test suite across all completed milestones (dataset schemas, database constraints, cancellation detection, waitlist matching, safe booking recovery, offer creation/lifecycle, AI message drafting, revenue tracking metrics, and AI agent tool calling):
 
 ```bash
 cd server
 npm test
 ```
 
-All 123 tests run in-memory using Node.js built-in `node:test` and `node:sqlite` with zero external dependencies and zero API costs.
+All 154 tests run in-memory using Node.js built-in `node:test` and `node:sqlite` with zero external dependencies and zero API costs.
 
