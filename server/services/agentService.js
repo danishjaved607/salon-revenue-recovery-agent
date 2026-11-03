@@ -387,7 +387,33 @@ const defaultToolRegistry = {
 
   get_appointment_details: async (args, options = {}) => {
     const targetDb = options.targetDb || db;
-    const appointment = getAppointmentById(args.appointmentId, targetDb);
+    const appointment = targetDb.prepare(`
+      SELECT
+        a.id,
+        a.customerId,
+        c.name AS customerName,
+        a.serviceId,
+        s.name AS serviceName,
+        s.category AS serviceCategory,
+        s.durationMinutes AS serviceDurationMinutes,
+        s.price AS servicePrice,
+        s.currency AS serviceCurrency,
+        a.staffId,
+        st.name AS staffName,
+        a.date,
+        a.startTime,
+        a.endTime,
+        a.status,
+        a.cancelledAt,
+        a.cancellationReason,
+        a.notes
+      FROM appointments a
+      LEFT JOIN customers c ON a.customerId = c.id
+      LEFT JOIN services s  ON a.serviceId = s.id
+      LEFT JOIN staff st    ON a.staffId = st.id
+      WHERE a.id = ?
+    `).get(args.appointmentId);
+
     if (!appointment) {
       return {
         found: false,
@@ -410,26 +436,63 @@ const defaultToolRegistry = {
   explain_candidate_eligibility: async (args, options = {}) => {
     const targetDb = options.targetDb || db;
     const result = findEligibleCandidates(args.appointmentId, targetDb);
-    let exclusions = result.excludedCandidates || [];
+
     if (args.waitlistId) {
-      exclusions = exclusions.filter(e => e.waitlistId === args.waitlistId);
+      const eligibleMatch = (result.eligibleCandidates || []).find(c => c.waitlistId === args.waitlistId);
+      if (eligibleMatch) {
+        return {
+          appointmentId: args.appointmentId,
+          waitlistId: args.waitlistId,
+          status: 'eligible',
+          qualifies: true,
+          candidate: eligibleMatch,
+          explanation: `Candidate ${eligibleMatch.customerName} qualifies for this slot (service matches, consent is given, staff is available and qualified, and no schedule conflicts exist). Ranked priority: ${eligibleMatch.priority}.`,
+        };
+      }
+
+      const excludedMatch = (result.excludedCandidates || []).find(e => e.waitlistId === args.waitlistId);
+      if (excludedMatch) {
+        return {
+          appointmentId: args.appointmentId,
+          waitlistId: args.waitlistId,
+          status: 'excluded',
+          qualifies: false,
+          candidate: excludedMatch,
+          reason: excludedMatch.reason,
+          message: excludedMatch.message,
+          allReasons: excludedMatch.allReasons,
+          explanation: `Candidate ${excludedMatch.customerName} does not qualify: ${excludedMatch.message}`,
+        };
+      }
+
+      return {
+        appointmentId: args.appointmentId,
+        waitlistId: args.waitlistId,
+        status: 'not_found',
+        qualifies: false,
+        message: `Waitlist candidate "${args.waitlistId}" was not found in evaluation for appointment "${args.appointmentId}".`,
+      };
     }
+
     return {
       appointmentId: args.appointmentId,
-      waitlistId: args.waitlistId || null,
-      totalExcluded: exclusions.length,
-      excludedCandidates: exclusions,
+      totalChecked: result.summary.totalChecked,
+      eligibleCount: result.summary.eligibleCount,
+      excludedCount: result.summary.excludedCount,
+      totalExcluded: result.summary.excludedCount,
+      eligibleCandidates: result.eligibleCandidates,
+      excludedCandidates: result.excludedCandidates,
+      staffAssigned: result.staffAssigned,
     };
   },
 
   create_recovery_offer: async (args, options = {}) => {
     const targetDb = options.targetDb || db;
     const offer = await createOfferAsync(args.appointmentId, args.waitlistId, {
-      targetDb,
       openAiClient: options.client,
       openAiApiKey: options.apiKey,
       openAiModel: options.model,
-    });
+    }, targetDb);
     return {
       success: true,
       message: 'Draft recovery offer created successfully in pending_approval status.',

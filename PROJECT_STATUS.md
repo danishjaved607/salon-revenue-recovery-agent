@@ -12,7 +12,7 @@ This document tracks completed work, current progress, architectural decisions, 
 | **Milestone 1** | **Project Setup and Synthetic Data**: Project structure, package setup, synthetic datasets, SQLite init, idempotent seed loader, test suite | **Completed** | Full in-memory and file-based test coverage passed |
 | **Milestone 2** | **Core Booking and Recovery Logic**: Cancellation detection, eligibility engine, waitlist matching, and safe booking confirmation | **Completed** | Parts A, B, and C verified with 54 tests across cancellation, matching, and booking |
 | **Milestone 3** | **Offers and Revenue Tracking**: Part A (Offer Creation & Tracking), Part B (AI Message Drafting & Fallbacks), Part C (Revenue Tracking & Dashboard Metrics) | **Completed** | Parts A, B, and C verified with 49 tests (123 total project tests passed, 0 failed, 36 suites) |
-| **Milestone 4** | **Genuine AI Agent with OpenAI Tool Calling**: Part A (Foundation & Tool Schemas - Completed), Part B (Recovery Workflow & Tool Integration - In Progress), Part C (Reply Simulation & Autonomous Confirmation - Pending) | **In Progress** | Part A foundation verified with 31 tests (154 total project tests passed, 0 failed, 41 suites) |
+| **Milestone 4** | **Genuine AI Agent with OpenAI Tool Calling**: Part A (Foundation & Tool Schemas - Completed), Part B (Recovery Workflow & Tool Integration - Completed), Part C (Reply Simulation & Autonomous Confirmation - Pending) | **In Progress** | Parts A & B verified with 44 tests across agent and agentRoutes (167 total project tests passed, 0 failed, 44 suites) |
 | **Milestone 5** | **React Frontend and Dashboard UI**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics | **Not Started** | Depends on backend & AI agent API |
 | **Milestone 6** | **Integration, Testing, Security, Documentation and Certification Demo**: End-to-end integration, comprehensive testing, security review, documentation, and certification-ready demonstration | **Not Started** | Final milestone |
 
@@ -534,6 +534,74 @@ Created 5 realistic JSON datasets in `server/data/`:
 
 ---
 
+## Milestone 4 — Part B Implementation Summary: Backend Integration & Intelligent Recovery Workflow
+
+### 1. Integration of All Seven AI Tools with Domain Services
+All seven approved tools in `server/services/agentService.js` are connected to real backend implementations (zero placeholders):
+1. **`get_cancelled_appointments`**:
+   - Calls `cancellationService.getCancelledAppointments(targetDb, { date: args.date })`.
+   - Returns cancelled appointment records, with optional YYYY-MM-DD date filtering.
+2. **`get_appointment_details`**:
+   - Retrieves full appointment record with joined details from `services`, `staff`, and `customers`.
+   - Returns service name, duration, price, category, staff name, customer name, date, and time.
+   - Strips sensitive PII (`customerPhone`, `customerEmail`) via `sanitizePii`.
+   - Safely handles missing appointments with structured `APPOINTMENT_NOT_FOUND` error.
+3. **`find_eligible_waitlist_candidates`**:
+   - Calls `matchingService.findEligibleCandidates(args.appointmentId, targetDb)`.
+   - Executes multi-stage deterministic qualification (service match, staff qualification, schedule shift, breaks, customer consent, time bucket, double-booking prevention).
+   - Preserves deterministic priority and waitlist ranking.
+4. **`explain_candidate_eligibility`**:
+   - For a specific candidate (`waitlistId` provided): Inspects `eligibleCandidates` for qualifying reasons (priority, preferred staff, requested service) or `excludedCandidates` for specific deterministic exclusion codes (e.g., `NO_CUSTOMER_CONSENT`, `SERVICE_MISMATCH`, `DOUBLE_BOOKING_CONFLICT`).
+   - For an aggregate summary (`waitlistId` omitted): Returns total eligible, total excluded count, and breakdown of exclusion reasons across all candidates.
+5. **`create_recovery_offer`**:
+   - Calls `offerService.createOfferAsync(args.appointmentId, args.waitlistId, draftingOptions, targetDb)`.
+   - Strictly enforces `pending_approval` lifecycle status (human-in-the-loop gating; AI cannot approve or send).
+   - Strictly rejects custom AI-written messages (delegates drafting to `messageDraftingService`).
+   - Automatically revalidates slot eligibility and enforces consent and duplicate-offer protections.
+6. **`get_offer_status`**:
+   - Calls `offerService.getOfferById` (if `offerId` supplied) or `offerService.getOffers` with optional `appointmentId` and `status` filters.
+   - Returns structured offer lifecycle status and details.
+7. **`get_dashboard_metrics`**:
+   - Calls `revenueService.getRevenueMetrics(targetDb)`.
+   - Returns total recovered revenue, recovered bookings, offer acceptance rate, recovery rate, and service-level breakdowns.
+
+### 2. Agent Chat API Route (`server/routes/agent.js`)
+- Exposes `POST /api/agent/chat` mounted at `/api/agent` in `server/app.js`.
+- **Request Validation**:
+  - Requires non-empty string `message` (up to 2000 characters).
+  - Validates `conversationHistory` via `validateConversationHistory()`.
+  - Rejects client-supplied `system`, `developer`, or `tool` roles (`DISALLOWED_ROLE`).
+- **Dependency Injection**:
+  - Reads `req.app.locals.openAiClient` and `req.app.locals.db` to support in-memory test databases and mocked OpenAI clients.
+- **Consistent Response Envelope**:
+  - Returns `{ success: true, reply: "...", toolExecutions: [...], iterations: N }`.
+- **Safe Error Encapsulation**:
+  - Emits 400 for validation errors, 503 if OpenAI API key is missing or service unavailable, and 500 for unexpected errors.
+  - Never leaks stack traces, API keys, or internal database secrets.
+
+### 3. Automated Tests (`server/tests/agentRoutes.test.js`)
+- 13 automated tests across 3 suites using in-memory SQLite and mock OpenAI clients:
+  1. **Route Validation & Safety**:
+     - Rejects missing message (400 `MISSING_MESSAGE`).
+     - Rejects empty/whitespace message (400 `INVALID_MESSAGE`).
+     - Rejects message exceeding 2000 characters (400 `MESSAGE_TOO_LONG`).
+     - Rejects invalid conversation history format (400 `INVALID_HISTORY_FORMAT`).
+     - Rejects client-supplied system/developer role in history (400 `DISALLOWED_ROLE`).
+     - Returns 503 `OPENAI_NOT_CONFIGURED` when API key is unconfigured.
+  2. **Consistent Response Structure & Multi-Turn Workflows**:
+     - Returns uniform envelope `{ success, reply, toolExecutions, iterations }` for conversational inquiries.
+     - Mocked end-to-end recovery loop: identifies cancelled appointment -> queries waitlist matches -> creates recovery offer (pending approval) -> returns final summary.
+     - Explains candidate eligibility with deterministic exclusion reasons.
+     - Retrieves dashboard revenue metrics via tool call.
+  3. **Domain Safety & Business Rules Enforcement**:
+     - Rejects tool calls attempting to supply `customMessage` (enforcing schema gating).
+     - Verifies customer PII (phone and email) is sanitized from tool execution outputs.
+     - Prevents duplicate active offers for the same appointment and candidate.
+     - Enforces customer consent gating (rejection when `consentToOffers = 0`).
+- **Total Project Test Suite Count**: **167 tests passing (0 failing)** across 44 suites.
+
+---
+
 ## Architectural Decisions
 
 1. **Node 22 Built-in `node:sqlite` (`DatabaseSync`)**:
@@ -570,6 +638,10 @@ Created 5 realistic JSON datasets in `server/data/`:
     - Client requests cannot forge `system`, `developer`, or `tool` roles, preserving server authority over prompts and tool results.
 16. **Deterministic Tool Execution & Circuit Breakers (Max Iterations)**:
     - Limits reasoning iterations to a configurable threshold (default: 6), ensuring operations terminate predictably and prevent runaway API loops.
+17. **Dependency Injection via Express Locals (`req.app.locals`)**:
+    - Enables test suites to inject mock OpenAI clients and in-memory test databases cleanly through native Express `locals` without monkey-patching globals or requiring external mocking libraries.
+18. **Rich Joined Appointment Tool Inspection**:
+    - `get_appointment_details` performs a read-only relational join to provide the LLM with service duration, service price, category, staff name, and customer name, while stripping customer phone numbers and email addresses.
 
 ---
 
@@ -585,11 +657,8 @@ Created 5 realistic JSON datasets in `server/data/`:
 ## Next Steps (Milestone 4 — Genuine AI Agent with OpenAI Tool Calling)
 
 - **Milestone 4 — Part A: Genuine AI Agent Foundation**: **Completed** (System prompt, 7 tool schemas, argument validation, history validation, PII sanitization, multi-turn tool-calling loop, 31 tests passed).
-- **Milestone 4 — Part B: Tool Integration & Recovery Workflow (In Progress)**:
-  - Expose agent HTTP endpoint (`POST /api/agent/chat`).
-  - Wire end-to-end recovery planning (inspecting cancellations, querying waitlist matches, explaining exclusions, drafting offers).
-  - Verify complete integration between HTTP API, agent service, and deterministic domain services.
-- **Milestone 4 — Part C: Customer Reply Simulation & Booking Confirmation**:
+- **Milestone 4 — Part B: Backend Integration & Intelligent Recovery Workflow**: **Completed** (All 7 tools connected to domain services, `POST /api/agent/chat` route, full end-to-end recovery planning, 13 route & integration tests passed).
+- **Milestone 4 — Part C: Customer Reply Simulation & Booking Confirmation (Pending)**:
   - Implement simulated customer replies (`YES`, `NO`, `NO_REPLY`) to sent offers.
   - Automate transitions from accepted offers to confirmed recovery bookings via `bookingService.confirmBooking()`.
   - Validate double-booking protection and revenue metric updates upon simulated acceptance.

@@ -29,9 +29,9 @@ The application will match cancelled slots with eligible waitlist customers, pre
   - *Verification*: 123 automated tests passed, 0 failed, 36 suites.
 - **Milestone 4 — Genuine AI Agent with OpenAI Tool Calling (In Progress)**:
   - **Part A (Completed)**: Agent foundation, safety system prompt, 7 approved OpenAI function tool definitions (`additionalProperties: false`), schema-based argument validation, conversation history validation, PII sanitization, and multi-turn tool-calling loop with mock client dependency injection.
-  - **Part B (In Progress)**: Tool integration and recovery workflow orchestration (exposing agent endpoints and integrating tools with domain services).
+  - **Part B (Completed)**: Backend integration & intelligent recovery workflow connecting all seven tools to real domain services, exposed `POST /api/agent/chat` with history and input validation, safe error encapsulation, and end-to-end recovery planning.
   - **Part C (Pending)**: Customer reply simulation (YES, NO, NO_REPLY) and automated booking transitions.
-  - *Verification*: 154 automated tests passed, 0 failed, 41 suites.
+  - *Verification*: 167 automated tests passed, 0 failed, 44 suites.
 - **Milestone 5 — React Frontend and Dashboard UI (Not Started)**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics.
 - **Milestone 6 — Integration, Testing, Security, Documentation and Certification Demo (Not Started)**: End-to-end integration, comprehensive testing, security review, documentation, and a certification-ready demonstration.
 
@@ -81,6 +81,7 @@ salon-revenue-recovery-agent/
     │   ├── errorHandler.js   # Centralized error handler
     │   └── requestLogger.js  # HTTP request logger
     ├── routes/
+    │   ├── agent.js          # AI agent chat and recovery workflow endpoint
     │   ├── appointments.js   # Cancellation, matching, booking, and slot offers routes
     │   ├── dashboard.js      # Revenue recovery metrics and dashboard endpoint
     │   └── offers.js         # Offer creation, querying, and status updates routes
@@ -100,10 +101,54 @@ salon-revenue-recovery-agent/
         ├── offers.test.js          # Milestone 3 Part A offer creation and tracking tests
         ├── messageDrafting.test.js # Milestone 3 Part B AI drafting and fallback template tests
         ├── revenue.test.js         # Milestone 3 Part C revenue metrics and dashboard tests
-        └── agent.test.js           # Milestone 4 Part A AI agent foundation and tool-calling tests
+        ├── agent.test.js           # Milestone 4 Part A AI agent foundation and tool-calling tests
+        └── agentRoutes.test.js     # Milestone 4 Part B agent API and workflow integration tests
 ```
 
 ## API Endpoints
+
+### AI Agent Chat
+
+- **`POST /api/agent/chat`**: Dispatches user messages and conversation history to the autonomous AI revenue recovery agent with tool execution.
+
+#### Request Body:
+
+```json
+{
+  "message": "Find cancelled appointments for today and recommend the top candidate.",
+  "conversationHistory": [
+    { "role": "user", "content": "Hello" },
+    { "role": "assistant", "content": "Hello! How can I assist you with revenue recovery today?" }
+  ]
+}
+```
+
+#### Example Response (`POST /api/agent/chat`):
+
+```json
+{
+  "success": true,
+  "reply": "I inspected cancelled appointment apt-002 and matched candidate wl-008 (Rabia Sheikh). An offer has been drafted and is awaiting staff approval.",
+  "toolExecutions": [
+    {
+      "toolName": "get_cancelled_appointments",
+      "args": {},
+      "result": { "success": true, "data": [{ "id": "apt-002", "serviceId": "svc-003", "status": "cancelled" }] }
+    },
+    {
+      "toolName": "find_eligible_waitlist_candidates",
+      "args": { "appointmentId": "apt-002" },
+      "result": { "success": true, "data": [{ "waitlistId": "wl-008", "customerName": "Rabia Sheikh" }] }
+    },
+    {
+      "toolName": "create_recovery_offer",
+      "args": { "appointmentId": "apt-002", "waitlistId": "wl-008" },
+      "result": { "success": true, "data": { "offerId": "off-001", "status": "pending_approval" } }
+    }
+  ],
+  "iterations": 4
+}
+```
 
 ### Dashboard Metrics
 
@@ -164,5 +209,5 @@ cd server
 npm test
 ```
 
-All 154 tests run in-memory using Node.js built-in `node:test` and `node:sqlite` with zero external dependencies and zero API costs.
+All 167 tests run in-memory using Node.js built-in `node:test` and `node:sqlite` with zero external dependencies and zero API costs.
 
