@@ -13,7 +13,7 @@ This document tracks completed work, current progress, architectural decisions, 
 | **Milestone 2** | **Core Booking and Recovery Logic**: Cancellation detection, eligibility engine, waitlist matching, and safe booking confirmation | **Completed** | Parts A, B, and C verified with 54 tests across cancellation, matching, and booking |
 | **Milestone 3** | **Offers and Revenue Tracking**: Part A (Offer Creation & Tracking), Part B (AI Message Drafting & Fallbacks), Part C (Revenue Tracking & Dashboard Metrics) | **Completed** | Parts A, B, and C verified with 49 tests (123 total project tests passed, 0 failed, 36 suites) |
 | **Milestone 4** | **Genuine AI Agent with OpenAI Tool Calling**: Part A (Foundation & Tool Schemas - Completed), Part B (Recovery Workflow & Tool Integration - Completed), Part C (Reply Simulation & Autonomous Confirmation - Completed) | **Completed** | Parts A, B, and C verified with 72 tests across agent, agentRoutes, and replySimulator (195 total project tests passed, 0 failed, 49 suites) |
-| **Milestone 5** | **React Frontend and Dashboard UI**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics | **In Progress (Parts A & B Completed)** | Part A (Frontend Foundation) and Part B (Live Revenue Dashboard) completed and verified. |
+| **Milestone 5** | **React Frontend and Dashboard UI**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics | **In Progress (Parts A, B & C Completed)** | Part A (Frontend Foundation), Part B (Live Revenue Dashboard), and Part C (Recovery Workspace & Candidate Matching) completed and verified. |
 | **Milestone 6** | **Integration, Testing, Security, Documentation and Certification Demo**: End-to-end integration, comprehensive testing, security review, documentation, and certification-ready demonstration | **Not Started** | Final milestone |
 
 ---
@@ -785,6 +785,54 @@ Implemented a robust customer reply processing service connecting offer response
 
 ---
 
+## Milestone 5 — Part C Implementation Summary: Recovery Workspace & Candidate Matching
+
+### 1. Scope & Core Features
+- Replaced the static M5 Part A Recovery Workspace placeholder with an interactive master-detail matching interface connected to real backend services.
+- **Cancelled Appointment Queue**:
+  - Live retrieval from `GET /api/appointments/cancelled`.
+  - Displays service name, appointment value in PKR, appointment date, scheduled time interval, assigned staff, and original cancellation reason.
+  - Interactive selection highlighting active slot with blush-pink border and gradient accent.
+  - Automatic selection of the first cancelled appointment upon load.
+  - Graceful empty state when zero cancelled appointments are found.
+- **Candidate Matching & Slot Inspection**:
+  - Fetches deterministic match results from `GET /api/appointments/:id/matches` whenever a slot is selected.
+  - Slot summary card presenting date, time bucket, assigned staff qualification status (`Qualified` / `Not Qualified`), and staff schedule availability (`Available` / `Schedule Conflict`).
+  - Active offers banner querying `GET /api/appointments/:id/offers` to prevent duplicate efforts.
+- **Ranked Eligible Candidates Presentation**:
+  - Displays eligible waitlist candidates strictly following backend-provided deterministic ranking (`priority ASC`, then `addedAt ASC`).
+  - Presents candidate priority chips (`Priority 1`, `Priority 2`), client name, contact details, requested service, and staff preference indicator (`Prefers Any Staff` vs specific staff preference).
+  - Never duplicates business or scoring rules in React.
+- **One-Click Recovery Offer Generation**:
+  - Integrated with `POST /api/offers`, transmitting `appointmentId` and `waitlistId`.
+  - Creates offers in default `pending_approval` status, strictly enforcing human approval.
+  - Inline loading indicator during offer submission with duplicate click locking.
+  - Prevents recreating offers for already active waitlist candidates with disabled state and `Offer: Pending Approval` status badges.
+  - Graceful HTTP 409 duplicate-offer handling with informative feedback alerts.
+  - Automatic refresh of slot offers upon successful creation.
+- **Excluded Candidates Accordion**:
+  - Collapsible accordion section detailing all disqualified waitlist clients.
+  - Presents backend-provided rejection codes (`SERVICE_MISMATCH`, `DATE_NOT_AVAILABLE`, `STAFF_PREFERENCE_MISMATCH`, `NO_CUSTOMER_CONSENT`, etc.) and human-readable explanation messages.
+
+### 2. Files Created and Modified
+- **Created**:
+  - `client/src/api/recovery.js`: Exporting `getCancelledAppointments()`, `getAppointmentMatches()`, `getOffersForAppointment()`, and `createRecoveryOffer()`.
+- **Modified**:
+  - `client/src/pages/RecoveryWorkspacePage.jsx`: Implemented master-detail queue, matching inspector, offer creation, and collapsible exclusion lists.
+  - `client/src/styles/pages.css`: Added responsive styling for `.workspace-layout`, `.queue-card-btn`, `.slot-summary-card`, `.candidate-card`, `.btn-create-offer`, `.offer-active-pill`, and `.excluded-accordion`.
+  - `PROJECT_STATUS.md`: Documented Part C completion, architecture, and verification results.
+
+### 3. Build & Test Verification
+- **Client Production Build**:
+  - `npm run build` executed in `client/`:
+  - 93 modules transformed cleanly.
+  - Built in 726ms with 0 errors and 0 warnings.
+- **Backend Test Suite**:
+  - `npm test` executed in `server/`:
+  - 195/195 tests passing across 49 suites (100% pass rate).
+
+---
+
 ## Architectural Decisions
 
 1. **Node 22 Built-in `node:sqlite` (`DatabaseSync`)**:
@@ -845,10 +893,10 @@ Implemented a robust customer reply processing service connecting offer response
 
 ## Next Steps
 
-- **Milestone 5 — React Frontend and Dashboard UI**: **In Progress (Parts A & B Completed)**
+- **Milestone 5 — React Frontend and Dashboard UI**: **In Progress (Parts A, B & C Completed)**
   - **Part A: React Frontend Foundation (Completed)**: SaaS application shell, responsive sidebar navigation, contextual header, declarative React Router DOM 7 routing, API client, design system tokens, and production build verification.
   - **Part B: Revenue Dashboard & Metrics UI (Completed)**: Live metrics cards (`GET /api/dashboard/metrics`), appointment recovery rates, offer lifecycle breakdowns, error/loading states, zero-data hints, and Vanilla CSS styling.
-  - **Part C: Recovery Workspace & Candidate Matching UI (Upcoming)**: Cancelled appointment queue (`GET /api/appointments/cancelled`) and candidate matching inspector (`GET /api/appointments/:id/matches`).
+  - **Part C: Recovery Workspace & Candidate Matching UI (Completed)**: Cancelled appointment queue (`GET /api/appointments/cancelled`), candidate matching inspector (`GET /api/appointments/:id/matches`), slot availability & staff qualification badges, deterministic ranking presentation, offer creation (`POST /api/offers`), and collapsible exclusion list.
   - **Part D: Offer Management & Reply Simulation UI (Upcoming)**: Offer lifecycle tracking, human approval actions, and simulated reply triggers (`YES`, `NO`, `NO_REPLY`).
   - **Part E: Conversational AI Agent Studio UI (Upcoming)**: Interactive chat interface (`POST /api/agent/chat`) with transparent tool execution telemetry.
 
