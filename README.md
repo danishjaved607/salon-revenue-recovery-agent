@@ -32,7 +32,9 @@ The application will match cancelled slots with eligible waitlist customers, pre
   - **Part B (Completed)**: Backend integration & intelligent recovery workflow connecting all seven tools to real domain services, exposed `POST /api/agent/chat` with history and input validation, safe error encapsulation, and end-to-end recovery planning.
   - **Part C (Completed)**: Simulated customer reply service (`YES`, `NO`, `NO_REPLY`), human approval and sending state gating, duplicate response prevention, atomic booking confirmation via `bookingService.confirmBooking()`, and `POST /api/offers/:id/simulate-reply`.
   - *Verification*: 195 automated tests passed, 0 failed, 49 suites.
-- **Milestone 5 — React Frontend and Dashboard UI (Not Started)**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics.
+- **Milestone 5 — React Frontend and Dashboard UI (In Progress — Part A Completed)**:
+  - **Part A (Completed)**: React frontend foundation: responsive SaaS application shell, responsive sidebar navigation, contextual header, declarative React Router DOM 7 routing (`/dashboard`, `/recovery-workspace`, `/offers`, `/agent`, and 404 fallback), Axios API client with backend error envelope extraction (`client/src/api/client.js`), and centralized light blush-pink design system tokens.
+  - **Parts B–E (Upcoming)**: Revenue metrics dashboard, recovery workspace, offer lifecycle & reply simulation studio, and conversational AI agent studio.
 - **Milestone 6 — Integration, Testing, Security, Documentation and Certification Demo (Not Started)**: End-to-end integration, comprehensive testing, security review, documentation, and a certification-ready demonstration.
 
 ## Development Approach
@@ -54,15 +56,29 @@ salon-revenue-recovery-agent/
 ├── .gitignore                # Git exclusions (node_modules, db, secrets)
 ├── PROJECT_STATUS.md         # Milestone progress, decisions, and roadmap
 ├── README.md                 # Project overview and setup instructions
-├── client/                   # Frontend workspace (React + Vite)
-│   ├── index.html            # Vite entry HTML
-│   ├── package.json          # Client configuration
-│   ├── vite.config.js        # Vite build & proxy configuration
+├── client/                   # Frontend workspace (React 18 + Vite)
+│   ├── index.html            # Vite entry HTML with Google Fonts
+│   ├── package.json          # Client dependencies (React 18, React Router DOM 7, Axios, Vite)
+│   ├── vite.config.js        # Vite build & proxy configuration (/api -> :3000)
 │   └── src/
-│       ├── App.jsx           # Minimal root component shell
+│       ├── App.jsx           # Declarative React Router DOM 7 router
 │       ├── main.jsx          # React DOM entry point
+│       ├── api/
+│       │   └── client.js     # Axios API client with error envelope normalization
+│       ├── components/
+│       │   ├── Header.jsx    # Contextual header with mobile menu toggle
+│       │   ├── Layout.jsx    # SaaS application shell layout
+│       │   └── Sidebar.jsx   # Responsive sidebar navigation with SVG icons
+│       ├── pages/
+│       │   ├── AgentPage.jsx             # AI agent concierge placeholder
+│       │   ├── DashboardPage.jsx         # Revenue dashboard placeholder
+│       │   ├── NotFoundPage.jsx          # 404 fallback route
+│       │   ├── OffersPage.jsx            # Offer management placeholder
+│       │   └── RecoveryWorkspacePage.jsx # Recovery workspace placeholder
 │       └── styles/
-│           └── index.css     # Design tokens and base styles
+│           ├── index.css     # Design tokens and base reset
+│           ├── layout.css    # Shell, sidebar, header, and drawer styles
+│           └── pages.css     # Reusable card and page container styles
 └── server/                   # Backend workspace (Node.js + Express + SQLite)
     ├── package.json          # Backend package configuration
     ├── server.js             # HTTP server entry point
