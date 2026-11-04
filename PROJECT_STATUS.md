@@ -13,7 +13,7 @@ This document tracks completed work, current progress, architectural decisions, 
 | **Milestone 2** | **Core Booking and Recovery Logic**: Cancellation detection, eligibility engine, waitlist matching, and safe booking confirmation | **Completed** | Parts A, B, and C verified with 54 tests across cancellation, matching, and booking |
 | **Milestone 3** | **Offers and Revenue Tracking**: Part A (Offer Creation & Tracking), Part B (AI Message Drafting & Fallbacks), Part C (Revenue Tracking & Dashboard Metrics) | **Completed** | Parts A, B, and C verified with 49 tests (123 total project tests passed, 0 failed, 36 suites) |
 | **Milestone 4** | **Genuine AI Agent with OpenAI Tool Calling**: Part A (Foundation & Tool Schemas - Completed), Part B (Recovery Workflow & Tool Integration - Completed), Part C (Reply Simulation & Autonomous Confirmation - Completed) | **Completed** | Parts A, B, and C verified with 72 tests across agent, agentRoutes, and replySimulator (195 total project tests passed, 0 failed, 49 suites) |
-| **Milestone 5** | **React Frontend and Dashboard UI**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics | **In Progress (Part A Completed)** | Part A (React Frontend Foundation) completed. Layout shell, sidebar, header, routing, API client, design tokens, and build checks verified. |
+| **Milestone 5** | **React Frontend and Dashboard UI**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics | **In Progress (Parts A & B Completed)** | Part A (Frontend Foundation) and Part B (Live Revenue Dashboard) completed and verified. |
 | **Milestone 6** | **Integration, Testing, Security, Documentation and Certification Demo**: End-to-end integration, comprehensive testing, security review, documentation, and certification-ready demonstration | **Not Started** | Final milestone |
 
 ---
@@ -724,6 +724,67 @@ Implemented a robust customer reply processing service connecting offer response
 
 ---
 
+## Milestone 5 — Part B Implementation Summary: Live Revenue Dashboard
+
+### 1. Scope & Core Features
+- Replaced the static M5 Part A Dashboard placeholder with a functional dashboard integrated with the real backend API endpoint `GET /api/dashboard/metrics`.
+- **Revenue Recovery Overview**:
+  - Live metric card and summary breakdown for Recovered Revenue (`metrics.recoveredRevenue`), formatted in PKR.
+  - Live counts for Recovered Bookings (`metrics.recoveredBookingsCount`).
+  - Live counts for Cancelled Appointments (`metrics.cancelledBookingsCount`).
+  - Live values for Lost Revenue at Risk (`metrics.lostRevenue`), formatted in PKR.
+  - Appointment Recovery Rate percentage (`metrics.appointmentRecoveryRate`).
+- **Offer Performance & Lifecycle Overview**:
+  - Total Offers Created counter (`metrics.offersCreatedCount`).
+  - Offers Accepted counter (`metrics.offersAcceptedCount`).
+  - Offer Acceptance Rate percentage (`metrics.offerAcceptanceRate`).
+  - Complete status breakdown grid covering all 7 lifecycle states:
+    - `pending_approval`: Pending Approval (amber/warning)
+    - `approved`: Approved (sky/info)
+    - `sent`: Sent (mauve/accent)
+    - `accepted`: Accepted (green/success)
+    - `declined`: Declined (red/danger)
+    - `no_reply`: No Reply (muted grey)
+    - `expired`: Expired (subtle grey)
+- **Recovery Activity**:
+  - Retained an informative, clearly worded placeholder card indicating that recovery transactions, waitlist candidate matches, and customer reply audits take place through the Recovery Workspace and Offer Management screens (per strict project scope).
+- **Scope Compliance**:
+  - Did NOT implement service-level tables, historical growth trends, forecasting, or mock data.
+  - Zero external chart dependencies installed. Pure semantic HTML and Vanilla CSS design tokens.
+
+### 2. API Integration & Reliability
+- Created dedicated API helper module: `client/src/api/dashboard.js` exporting `getDashboardMetrics()`.
+- Uses existing Axios instance `client/src/api/client.js` with base URL `/api` proxied to Express backend.
+- Managed React component state:
+  - `loading`: Clean loading card with animated spinner and polite ARIA status.
+  - `error`: Error alert card displaying normalized server error messages with a "Retry Connection" action.
+  - `metrics`: Live data parsed directly from the backend response envelope (`response.metrics`).
+  - Mount/unmount lifecycle guard (`isCancelled` flag) preventing memory leaks or stale state updates.
+  - Informative empty/initial state hints for zero recovered bookings and zero offers.
+
+### 3. Files Created and Modified
+- **Created**:
+  - `client/src/api/dashboard.js`: Exporting `getDashboardMetrics()` using the central Axios client.
+- **Modified**:
+  - `client/src/pages/DashboardPage.jsx`: Replaced static cards with live React state, API fetching, KPI cards, and status breakdowns.
+  - `client/src/styles/pages.css`: Added responsive styles for `.metrics-overview-grid`, `.metric-card`, `.status-breakdown-grid`, `.overview-stat-row`, `.dashboard-loading-card`, `.dashboard-error-card`, and compact mobile accommodations.
+  - `PROJECT_STATUS.md`: Documented Part B progress, architecture, and verification results.
+
+### 4. Build & Test Verification
+- **Client Production Build**:
+  - `npm run build` executed in `client/`:
+  - 92 modules transformed cleanly.
+  - Built in 911ms with 0 errors and 0 warnings.
+- **Backend Test Suite**:
+  - `npm test` executed in `server/`:
+  - 195/195 tests passing across 49 suites (100% pass rate).
+- **Live Backend Verification**:
+  - Queried `http://localhost:3000/api/dashboard/metrics` directly via HTTP; verified exact JSON contract matches frontend expectations.
+- **Browser Testing Note**:
+  - Direct browser automation via Playwright was attempted; Playwright driver download failed due to network isolation/restrictions (404 on Azure Edge CDN). Visual browser testing was therefore not performed, but frontend production build, code verification, and live backend HTTP queries passed cleanly.
+
+---
+
 ## Architectural Decisions
 
 1. **Node 22 Built-in `node:sqlite` (`DatabaseSync`)**:
@@ -784,9 +845,9 @@ Implemented a robust customer reply processing service connecting offer response
 
 ## Next Steps
 
-- **Milestone 5 — React Frontend and Dashboard UI**: **In Progress (Part A Completed)**
+- **Milestone 5 — React Frontend and Dashboard UI**: **In Progress (Parts A & B Completed)**
   - **Part A: React Frontend Foundation (Completed)**: SaaS application shell, responsive sidebar navigation, contextual header, declarative React Router DOM 7 routing, API client, design system tokens, and production build verification.
-  - **Part B: Revenue Dashboard & Metrics UI (Upcoming)**: Metric cards (`GET /api/dashboard/metrics`), recovery rates, service-level breakdown, and recent recovery activity feed.
+  - **Part B: Revenue Dashboard & Metrics UI (Completed)**: Live metrics cards (`GET /api/dashboard/metrics`), appointment recovery rates, offer lifecycle breakdowns, error/loading states, zero-data hints, and Vanilla CSS styling.
   - **Part C: Recovery Workspace & Candidate Matching UI (Upcoming)**: Cancelled appointment queue (`GET /api/appointments/cancelled`) and candidate matching inspector (`GET /api/appointments/:id/matches`).
   - **Part D: Offer Management & Reply Simulation UI (Upcoming)**: Offer lifecycle tracking, human approval actions, and simulated reply triggers (`YES`, `NO`, `NO_REPLY`).
   - **Part E: Conversational AI Agent Studio UI (Upcoming)**: Interactive chat interface (`POST /api/agent/chat`) with transparent tool execution telemetry.
