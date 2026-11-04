@@ -62,6 +62,7 @@ function getRevenueMetrics(targetDb = db) {
       COUNT(CASE WHEN status = 'approved' THEN 1 END) AS approvedOffers,
       COUNT(CASE WHEN status = 'sent' THEN 1 END) AS sentOffers,
       COUNT(CASE WHEN status = 'declined' THEN 1 END) AS declinedOffers,
+      COUNT(CASE WHEN status = 'no_reply' THEN 1 END) AS noReplyOffers,
       COUNT(CASE WHEN status = 'expired' THEN 1 END) AS expiredOffers
     FROM offers
   `).get() || {
@@ -71,6 +72,7 @@ function getRevenueMetrics(targetDb = db) {
     approvedOffers: 0,
     sentOffers: 0,
     declinedOffers: 0,
+    noReplyOffers: 0,
     expiredOffers: 0,
   };
 
@@ -125,6 +127,7 @@ function getRevenueMetrics(targetDb = db) {
       sent: offerStats.sentOffers || 0,
       accepted: acceptedOffers,
       declined: offerStats.declinedOffers || 0,
+      no_reply: offerStats.noReplyOffers || 0,
       expired: offerStats.expiredOffers || 0,
     },
     breakdownByService,

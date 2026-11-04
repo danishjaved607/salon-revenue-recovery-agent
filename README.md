@@ -27,11 +27,11 @@ The application will match cancelled slots with eligible waitlist customers, pre
   - **Part B**: OpenAI-powered message drafting with privacy guards, prompt builder, deterministic fallback templates (standard, priority, returning client), and human approval enforcement.
   - **Part C**: Revenue tracking and dashboard metrics calculation, appointment recovery rates, offer acceptance rates, service-level revenue breakdown, and `GET /api/dashboard/metrics`.
   - *Verification*: 123 automated tests passed, 0 failed, 36 suites.
-- **Milestone 4 — Genuine AI Agent with OpenAI Tool Calling (In Progress)**:
+- **Milestone 4 — Genuine AI Agent with OpenAI Tool Calling (Completed)**:
   - **Part A (Completed)**: Agent foundation, safety system prompt, 7 approved OpenAI function tool definitions (`additionalProperties: false`), schema-based argument validation, conversation history validation, PII sanitization, and multi-turn tool-calling loop with mock client dependency injection.
   - **Part B (Completed)**: Backend integration & intelligent recovery workflow connecting all seven tools to real domain services, exposed `POST /api/agent/chat` with history and input validation, safe error encapsulation, and end-to-end recovery planning.
-  - **Part C (Pending)**: Customer reply simulation (YES, NO, NO_REPLY) and automated booking transitions.
-  - *Verification*: 167 automated tests passed, 0 failed, 44 suites.
+  - **Part C (Completed)**: Simulated customer reply service (`YES`, `NO`, `NO_REPLY`), human approval and sending state gating, duplicate response prevention, atomic booking confirmation via `bookingService.confirmBooking()`, and `POST /api/offers/:id/simulate-reply`.
+  - *Verification*: 195 automated tests passed, 0 failed, 49 suites.
 - **Milestone 5 — React Frontend and Dashboard UI (Not Started)**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics.
 - **Milestone 6 — Integration, Testing, Security, Documentation and Certification Demo (Not Started)**: End-to-end integration, comprehensive testing, security review, documentation, and a certification-ready demonstration.
 
@@ -92,6 +92,7 @@ salon-revenue-recovery-agent/
     │   ├── bookingService.js       # Safe booking confirmation and slot recovery
     │   ├── offerService.js         # Offer generation, tracking, and lifecycle management
     │   ├── messageDraftingService.js # AI prompt builder, OpenAI drafting, and fallback templates
+    │   ├── replySimulator.js       # Simulated customer replies and automated recovery booking
     │   └── revenueService.js       # Revenue tracking, recovery rates, and analytics
     └── tests/
         ├── setup.test.js           # Milestone 1 database and seed test suite
@@ -102,7 +103,8 @@ salon-revenue-recovery-agent/
         ├── messageDrafting.test.js # Milestone 3 Part B AI drafting and fallback template tests
         ├── revenue.test.js         # Milestone 3 Part C revenue metrics and dashboard tests
         ├── agent.test.js           # Milestone 4 Part A AI agent foundation and tool-calling tests
-        └── agentRoutes.test.js     # Milestone 4 Part B agent API and workflow integration tests
+        ├── agentRoutes.test.js     # Milestone 4 Part B agent API and workflow integration tests
+        └── replySimulator.test.js  # Milestone 4 Part C customer reply simulation and recovery tests
 ```
 
 ## API Endpoints
@@ -147,6 +149,47 @@ salon-revenue-recovery-agent/
     }
   ],
   "iterations": 4
+}
+```
+
+### Customer Reply Simulation
+
+- **`POST /api/offers/:id/simulate-reply`**: Simulates customer response (`YES`, `NO`, or `NO_REPLY`) to a sent recovery offer.
+
+#### Request Body:
+
+```json
+{
+  "reply": "YES"
+}
+```
+
+#### Example Response (`POST /api/offers/:id/simulate-reply`):
+
+```json
+{
+  "success": true,
+  "message": "Customer accepted offer \"off-001\". Recovery booking successfully confirmed for appointment \"apt-002\".",
+  "reply": "YES",
+  "status": "accepted",
+  "appointmentRecovered": true,
+  "offer": {
+    "id": "off-001",
+    "status": "accepted",
+    "respondedAt": "2026-11-03T20:00:00.000Z"
+  },
+  "booking": {
+    "success": true,
+    "appointment": {
+      "id": "apt-002",
+      "status": "recovered",
+      "customerId": "cus-005"
+    },
+    "waitlist": {
+      "id": "wl-008",
+      "status": "booked"
+    }
+  }
 }
 ```
 
@@ -202,12 +245,11 @@ This operation is safe and idempotent: re-running it will detect existing record
 
 ### Running Automated Tests
 
-Execute the complete automated test suite across all completed milestones (dataset schemas, database constraints, cancellation detection, waitlist matching, safe booking recovery, offer creation/lifecycle, AI message drafting, revenue tracking metrics, and AI agent tool calling):
+Execute the complete automated test suite across all completed milestones (dataset schemas, database constraints, cancellation detection, waitlist matching, safe booking recovery, offer creation/lifecycle, AI message drafting, revenue tracking metrics, AI agent tool calling, and customer reply simulation):
 
 ```bash
 cd server
 npm test
 ```
 
-All 167 tests run in-memory using Node.js built-in `node:test` and `node:sqlite` with zero external dependencies and zero API costs.
-
+All 195 tests run in-memory using Node.js built-in `node:test` and `node:sqlite` with zero external dependencies and zero API costs.

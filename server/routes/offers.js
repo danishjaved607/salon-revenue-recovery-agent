@@ -1,7 +1,7 @@
 /**
  * routes/offers.js
  *
- * Express routes for appointment offer creation and tracking (Milestone 3 — Part A).
+ * Express routes for appointment offer creation, tracking, and customer reply simulation.
  */
 
 'use strict';
@@ -16,12 +16,20 @@ const {
   updateOfferStatus,
   OfferError,
 } = require('../services/offerService');
+const {
+  simulateCustomerReply,
+  ReplySimulationError,
+} = require('../services/replySimulator');
+const {
+  BookingConfirmationError,
+} = require('../services/bookingService');
 
 // POST /api/offers — Create an offer linking an eligible waitlist entry to a cancelled slot
 router.post('/', async (req, res, next) => {
   try {
+    const targetDb = req.app?.locals?.db || undefined;
     const { appointmentId, waitlistId, messageText, status } = req.body || {};
-    const offer = await createOfferAsync(appointmentId, waitlistId, { messageText, status });
+    const offer = await createOfferAsync(appointmentId, waitlistId, { messageText, status }, targetDb);
     res.status(201).json({
       success: true,
       message: 'Offer created successfully.',
@@ -44,8 +52,9 @@ router.post('/', async (req, res, next) => {
 // GET /api/offers — Query offers with optional filters (appointmentId, waitlistId, customerId, status)
 router.get('/', (req, res, next) => {
   try {
+    const targetDb = req.app?.locals?.db || undefined;
     const { appointmentId, waitlistId, customerId, status } = req.query;
-    const offers = getOffers({ appointmentId, waitlistId, customerId, status });
+    const offers = getOffers({ appointmentId, waitlistId, customerId, status }, targetDb);
     res.json({
       success: true,
       count: offers.length,
@@ -59,7 +68,8 @@ router.get('/', (req, res, next) => {
 // GET /api/offers/:id — Retrieve an offer by its ID
 router.get('/:id', (req, res, next) => {
   try {
-    const offer = getOfferById(req.params.id);
+    const targetDb = req.app?.locals?.db || undefined;
+    const offer = getOfferById(req.params.id, targetDb);
     if (!offer) {
       return res.status(404).json({
         success: false,
@@ -81,6 +91,7 @@ router.get('/:id', (req, res, next) => {
 // PATCH /api/offers/:id/status — Update the lifecycle status of an offer
 router.patch('/:id/status', (req, res, next) => {
   try {
+    const targetDb = req.app?.locals?.db || undefined;
     const { status, timestamp, approvedAt, sentAt, respondedAt } = req.body || {};
     if (!status) {
       return res.status(400).json({
@@ -91,7 +102,7 @@ router.patch('/:id/status', (req, res, next) => {
         },
       });
     }
-    const updated = updateOfferStatus(req.params.id, status, { timestamp, approvedAt, sentAt, respondedAt });
+    const updated = updateOfferStatus(req.params.id, status, { timestamp, approvedAt, sentAt, respondedAt }, targetDb);
     res.json({
       success: true,
       message: `Offer status updated to "${status}".`,
@@ -103,6 +114,42 @@ router.patch('/:id/status', (req, res, next) => {
         success: false,
         error: {
           code: err.code,
+          message: err.message,
+        },
+      });
+    }
+    next(err);
+  }
+});
+
+// POST /api/offers/:id/simulate-reply — Process a simulated customer reply (YES, NO, NO_REPLY)
+router.post('/:id/simulate-reply', (req, res, next) => {
+  try {
+    const targetDb = req.app?.locals?.db || undefined;
+    const { reply } = req.body || {};
+
+    if (!reply || typeof reply !== 'string' || !reply.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_REPLY',
+          message: 'A valid reply string ("YES", "NO", or "NO_REPLY") is required.',
+        },
+      });
+    }
+
+    const result = simulateCustomerReply(req.params.id, reply, {}, targetDb);
+    res.json(result);
+  } catch (err) {
+    if (
+      err instanceof ReplySimulationError ||
+      err instanceof OfferError ||
+      err instanceof BookingConfirmationError
+    ) {
+      return res.status(err.statusCode || 400).json({
+        success: false,
+        error: {
+          code: err.code || 'BAD_REQUEST',
           message: err.message,
         },
       });

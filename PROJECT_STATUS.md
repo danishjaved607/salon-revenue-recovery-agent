@@ -12,7 +12,7 @@ This document tracks completed work, current progress, architectural decisions, 
 | **Milestone 1** | **Project Setup and Synthetic Data**: Project structure, package setup, synthetic datasets, SQLite init, idempotent seed loader, test suite | **Completed** | Full in-memory and file-based test coverage passed |
 | **Milestone 2** | **Core Booking and Recovery Logic**: Cancellation detection, eligibility engine, waitlist matching, and safe booking confirmation | **Completed** | Parts A, B, and C verified with 54 tests across cancellation, matching, and booking |
 | **Milestone 3** | **Offers and Revenue Tracking**: Part A (Offer Creation & Tracking), Part B (AI Message Drafting & Fallbacks), Part C (Revenue Tracking & Dashboard Metrics) | **Completed** | Parts A, B, and C verified with 49 tests (123 total project tests passed, 0 failed, 36 suites) |
-| **Milestone 4** | **Genuine AI Agent with OpenAI Tool Calling**: Part A (Foundation & Tool Schemas - Completed), Part B (Recovery Workflow & Tool Integration - Completed), Part C (Reply Simulation & Autonomous Confirmation - Pending) | **In Progress** | Parts A & B verified with 44 tests across agent and agentRoutes (167 total project tests passed, 0 failed, 44 suites) |
+| **Milestone 4** | **Genuine AI Agent with OpenAI Tool Calling**: Part A (Foundation & Tool Schemas - Completed), Part B (Recovery Workflow & Tool Integration - Completed), Part C (Reply Simulation & Autonomous Confirmation - Completed) | **Completed** | Parts A, B, and C verified with 72 tests across agent, agentRoutes, and replySimulator (195 total project tests passed, 0 failed, 49 suites) |
 | **Milestone 5** | **React Frontend and Dashboard UI**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics | **Not Started** | Depends on backend & AI agent API |
 | **Milestone 6** | **Integration, Testing, Security, Documentation and Certification Demo**: End-to-end integration, comprehensive testing, security review, documentation, and certification-ready demonstration | **Not Started** | Final milestone |
 
@@ -602,6 +602,55 @@ All seven approved tools in `server/services/agentService.js` are connected to r
 
 ---
 
+## Milestone 4 — Part C Implementation Summary: Simulated Customer Replies & Booking Confirmation
+
+### 1. Simulated Customer Reply Service (`server/services/replySimulator.js`)
+Implemented a robust customer reply processing service connecting offer responses to the core recovery booking engine:
+- **`simulateCustomerReply(offerId, reply, optionsOrDb, maybeDb)`**:
+  - Validates `offerId` (non-empty string) and normalizes `reply` (`YES`, `NO`, `NO_REPLY`). Rejects invalid values with 400 `INVALID_REPLY`.
+  - Enforces offer existence: throws 404 `OFFER_NOT_FOUND` if record is missing.
+  - Enforces offer response state gating: only offers in status `'sent'` may receive replies. Offers in `'pending_approval'` or `'approved'` are rejected with 400 `INVALID_OFFER_STATUS` (preserving the mandatory staff review and sending workflow).
+  - Enforces terminal state duplicate protection: offers already in `'accepted'`, `'declined'`, or `'no_reply'` throw 409 `OFFER_ALREADY_PROCESSED`. Expired offers throw 409 `OFFER_EXPIRED`.
+- **Workflow Branching**:
+  - **`YES` (Accepted)**:
+    - Connects directly to `bookingService.confirmBooking(appointmentId, waitlistId, options, targetDb)`.
+    - Live-revalidates appointment status (`cancelled`), waitlist status (`waiting`), customer consent, and staff qualification/schedule within `BEGIN IMMEDIATE` transaction.
+    - Transitions `appointments.status` to `'recovered'`, assigns `customerId` to waitlist customer, and appends recovery notes.
+    - Transitions `waitlist.status` to `'booked'`.
+    - Transitions `offers.status` to `'accepted'` and records `respondedAt`.
+    - Automatically updates recovered revenue and booking metrics.
+  - **`NO` (Declined)**:
+    - Calls `updateOfferStatus(offerId, 'declined', { respondedAt }, targetDb)`.
+    - Preserves appointment in `'cancelled'` status and waitlist entry in `'waiting'` status.
+    - Does not create a booking and does not increment recovered revenue.
+  - **`NO_REPLY` (No Response)**:
+    - Calls `updateOfferStatus(offerId, 'no_reply', { respondedAt }, targetDb)`.
+    - Preserves appointment in `'cancelled'` status and waitlist entry in `'waiting'` status.
+    - Does not create a booking and does not increment recovered revenue.
+
+### 2. API Route (`POST /api/offers/:id/simulate-reply`)
+- Added to `server/routes/offers.js`:
+  - Validates request body contains a valid `reply` string (`YES`, `NO`, or `NO_REPLY`).
+  - Supports dependency-injected test database via `req.app.locals.db`.
+  - Returns 200 with structured JSON response `{ success, message, reply, status, appointmentRecovered, offer, booking? }`.
+  - Encapsulates domain errors into structured HTTP error responses (400, 404, 409) without leaking stack traces or internal secrets.
+
+### 3. Revenue Metrics Integration (`server/services/revenueService.js`)
+- Updated SQL aggregations to count `no_reply` offers explicitly:
+  - `COUNT(CASE WHEN status = 'no_reply' THEN 1 END) AS noReplyOffers`
+  - Added `no_reply` to `offersBreakdownByStatus` payload.
+
+### 4. Automated Tests (`server/tests/replySimulator.test.js`)
+- 28 automated tests across 5 test suites using isolated in-memory SQLite (`:memory:`):
+  1. **Customer Reply Workflows**: Validates YES (booking confirmed, slot recovered, revenue incremented), NO (declined, no booking, revenue unchanged), NO_REPLY (no_reply status, no booking, revenue unchanged), and case normalization.
+  2. **Validation and State Gating**: Validates rejection of unsupported reply values, missing offer ID, non-existent offers (404), pending_approval gating (400), approved-not-sent gating (400), and expired offers (409).
+  3. **Duplicate Protection & Concurrency**: Validates rejection of duplicate YES, duplicate NO, duplicate NO_REPLY, slot already confirmed conflict (409), customer revoked consent rejection, and waitlist already booked rejection (409).
+  4. **HTTP Route Integration (`POST /api/offers/:id/simulate-reply`)**: Validates HTTP status codes (200, 400, 404, 409) and JSON envelopes.
+  5. **Complete End-to-End Workflow Integration**: Validates the full 9-step recovery sequence from cancelled slot detection to waitlist matching, offer creation, human approval gating, sending, customer reply, slot recovery, and revenue metric updates.
+- **Total Project Test Suite Count**: **195 tests passing (0 failing)** across 49 suites.
+
+---
+
 ## Architectural Decisions
 
 1. **Node 22 Built-in `node:sqlite` (`DatabaseSync`)**:
@@ -642,6 +691,8 @@ All seven approved tools in `server/services/agentService.js` are connected to r
     - Enables test suites to inject mock OpenAI clients and in-memory test databases cleanly through native Express `locals` without monkey-patching globals or requiring external mocking libraries.
 18. **Rich Joined Appointment Tool Inspection**:
     - `get_appointment_details` performs a read-only relational join to provide the LLM with service duration, service price, category, staff name, and customer name, while stripping customer phone numbers and email addresses.
+19. **Atomic Reply Processing and Booking Transition Isolation**:
+    - Customer reply simulation delegates acceptance confirmation to `bookingService.confirmBooking()` within `BEGIN IMMEDIATE` transaction, ensuring live slot revalidation, customer conflict checks, and duplicate-offer locking.
 
 ---
 
@@ -649,20 +700,25 @@ All seven approved tools in `server/services/agentService.js` are connected to r
 
 - Node.js emits an `ExperimentalWarning: SQLite is an experimental feature` log in Node 22, which is expected for `node:sqlite` and does not affect runtime reliability or test execution.
 - Single-process in-memory SQLite instances are inherently isolated per test runner thread; production environments using file-based SQLite rely on WAL mode and `BEGIN IMMEDIATE` for cross-process concurrency safety.
-- Live WhatsApp/SMS messaging transport remains deferred until the basic application is fully operational; offers currently transition to `sent` through human approval, with simulated customer responses (YES, NO, and no-response) supporting booking recovery workflows.
+- Live WhatsApp/SMS messaging transport remains deferred until the basic application is fully operational; offers transition to `sent` through human approval, with simulated customer responses (YES, NO, and NO_REPLY) driving booking recovery workflows.
 - Revenue calculations currently reflect active catalog service pricing; historical price versioning is not implemented as per Milestone 3 constraints.
 
 ---
 
-## Next Steps (Milestone 4 — Genuine AI Agent with OpenAI Tool Calling)
+## Next Steps
 
-- **Milestone 4 — Part A: Genuine AI Agent Foundation**: **Completed** (System prompt, 7 tool schemas, argument validation, history validation, PII sanitization, multi-turn tool-calling loop, 31 tests passed).
-- **Milestone 4 — Part B: Backend Integration & Intelligent Recovery Workflow**: **Completed** (All 7 tools connected to domain services, `POST /api/agent/chat` route, full end-to-end recovery planning, 13 route & integration tests passed).
-- **Milestone 4 — Part C: Customer Reply Simulation & Booking Confirmation (Pending)**:
-  - Implement simulated customer replies (`YES`, `NO`, `NO_REPLY`) to sent offers.
-  - Automate transitions from accepted offers to confirmed recovery bookings via `bookingService.confirmBooking()`.
-  - Validate double-booking protection and revenue metric updates upon simulated acceptance.
+- **Milestone 4 — Genuine AI Agent with OpenAI Tool Calling**: **Completed** (Parts A, B, and C verified with 72 tests across agent, agentRoutes, and replySimulator; 195 total project tests passed).
+  - Part A: Genuine AI Agent Foundation (Completed)
+  - Part B: Backend Integration & Intelligent Recovery Workflow (Completed)
+  - Part C: Simulated Customer Replies & Booking Confirmation (Completed)
 
-- **Upcoming Milestones**:
-  - **Milestone 5 — React Frontend and Dashboard UI**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated responses, recovered bookings, and revenue metrics.
-  - **Milestone 6 — Integration, Testing, Security, Documentation and Certification Demo**: End-to-end integration, comprehensive testing, security review, documentation, and a certification-ready demonstration.
+- **Milestone 5 — React Frontend and Dashboard UI (Next Milestone)**:
+  - User-facing React + Vite interface for viewing appointments, cancellations, waitlist entries, and recovery opportunities.
+  - Interactive candidate matching cards with eligibility explanations and priority ranking.
+  - Offer management screen supporting staff review (`pending_approval` -> `approved` -> `sent`).
+  - Simulated customer reply controls (`YES`, `NO`, `NO_REPLY`) with live booking confirmation feedback.
+  - Real-time revenue recovery metrics dashboard displaying recovered bookings, recovered revenue, acceptance rate, and recovery rate.
+
+- **Milestone 6 — Integration, Testing, Security, Documentation and Certification Demo**:
+  - End-to-end integration across frontend, backend, and AI agent.
+  - Comprehensive testing, security review, documentation, and a certification-ready demonstration.
