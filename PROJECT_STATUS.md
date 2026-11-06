@@ -13,7 +13,7 @@ This document tracks completed work, current progress, architectural decisions, 
 | **Milestone 2** | **Core Booking and Recovery Logic**: Cancellation detection, eligibility engine, waitlist matching, and safe booking confirmation | **Completed** | Parts A, B, and C verified with 54 tests across cancellation, matching, and booking |
 | **Milestone 3** | **Offers and Revenue Tracking**: Part A (Offer Creation & Tracking), Part B (AI Message Drafting & Fallbacks), Part C (Revenue Tracking & Dashboard Metrics) | **Completed** | Parts A, B, and C verified with 49 tests (123 total project tests passed, 0 failed, 36 suites) |
 | **Milestone 4** | **Genuine AI Agent with OpenAI Tool Calling**: Part A (Foundation & Tool Schemas - Completed), Part B (Recovery Workflow & Tool Integration - Completed), Part C (Reply Simulation & Autonomous Confirmation - Completed) | **Completed** | Parts A, B, and C verified with 72 tests across agent, agentRoutes, and replySimulator (195 total project tests passed, 0 failed, 49 suites) |
-| **Milestone 5** | **React Frontend and Dashboard UI**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics | **In Progress (Parts A, B & C Completed)** | Part A (Frontend Foundation), Part B (Live Revenue Dashboard), and Part C (Recovery Workspace & Candidate Matching) completed and verified. |
+| **Milestone 5** | **React Frontend and Dashboard UI**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics | **In Progress (Parts A, B, C & D Completed)** | Parts A (Frontend Foundation), B (Live Revenue Dashboard), C (Recovery Workspace), and D (Offer Management & Reply Simulation) completed and verified. |
 | **Milestone 6** | **Integration, Testing, Security, Documentation and Certification Demo**: End-to-end integration, comprehensive testing, security review, documentation, and certification-ready demonstration | **Not Started** | Final milestone |
 
 ---
@@ -833,6 +833,50 @@ Implemented a robust customer reply processing service connecting offer response
 
 ---
 
+## Milestone 5 — Part D Implementation Summary: Offer Management & Reply Simulation
+
+### 1. Scope & Core Features
+- Replaced the static M5 Part A Offer Management placeholder with an interactive registry and reply simulation studio connected to real backend routes.
+- **Offer Registry & Metadata Display**:
+  - Live query via `GET /api/offers`.
+  - Filter bar with live count badges across all 7 supported lifecycle statuses: `pending_approval`, `approved`, `sent`, `accepted`, `declined`, `no_reply`, `expired`.
+  - Comprehensive card presentation displaying customer name, service name, slot date & time, assigned staff member, customer contact info, creation timestamp (`generatedAt`), approval timestamp (`approvedAt`), sent timestamp (`sentAt`), and response timestamp (`respondedAt`).
+  - Customer message draft preview highlighting exact personalized text.
+- **Human Approval Workflow**:
+  - Enforces backend status transition rules without bypassing human review:
+    - Offers in `pending_approval` feature an "Approve Offer" button dispatching `PATCH /api/offers/:id/status` with `{ status: 'approved' }`.
+    - Offers in `approved` feature a "Mark as Sent" button dispatching `PATCH /api/offers/:id/status` with `{ status: 'sent' }`.
+    - Direct transition from `pending_approval` to `sent` is strictly rejected by backend business logic.
+- **Customer Reply Simulation Studio**:
+  - Simulation controls (`YES`, `NO`, `NO_REPLY`) are strictly gated and rendered only for offers in `sent` status.
+  - Interactive simulation triggers `POST /api/offers/:id/simulate-reply`:
+    - `YES`: Customer accepts the offer; executes atomic booking confirmation via `bookingService.confirmBooking()`. Recovers cancelled slot, updates waitlist entry to `booked`, and transitions offer to `accepted`. Displays booking recovered banner only upon backend verification.
+    - `NO`: Customer declines offer; transitions offer to `declined`, preserving appointment in `cancelled` status without creating a booking.
+    - `NO_REPLY`: Records customer non-response; transitions offer to `no_reply`, preserving appointment in `cancelled` status without creating a booking.
+- **Booking Recovery & Concurrency Safety**:
+  - Duplicate click locking and inline loading states (`submittingId`).
+  - Graceful handling of HTTP 409 conflicts (`OFFER_ALREADY_PROCESSED`, `BOOKING_CONFLICT`) with informative feedback alerts.
+  - Automatic refresh of offer list to keep frontend state consistent with backend transactional isolation.
+
+### 2. Files Created and Modified
+- **Created**:
+  - `client/src/api/offers.js`: Exporting `getOffers()`, `getOfferById()`, `updateOfferStatus()`, and `simulateCustomerReply()`.
+- **Modified**:
+  - `client/src/pages/OffersPage.jsx`: Replaced static cards with real-time offer registry, status filtering, human approval controls, and interactive customer reply simulation.
+  - `client/src/styles/pages.css`: Added responsive styling for `.offers-filter-bar`, `.filter-tab-btn`, `.offer-card`, `.status-pill`, `.offer-meta-grid`, `.offer-message-box`, `.simulation-box`, `.btn-sim`, `.btn-approve`, `.btn-send`, and `.outcome-box`.
+  - `PROJECT_STATUS.md`: Documented Part D completion, architecture, and verification results.
+
+### 3. Build & Test Verification
+- **Client Production Build**:
+  - `npm run build` executed in `client/`:
+  - 94 modules transformed cleanly.
+  - Built in 1.17s with 0 errors and 0 warnings.
+- **Backend Test Suite**:
+  - `npm test` executed in `server/`:
+  - 195/195 tests passing across 49 suites (100% pass rate).
+
+---
+
 ## Architectural Decisions
 
 1. **Node 22 Built-in `node:sqlite` (`DatabaseSync`)**:
@@ -893,11 +937,11 @@ Implemented a robust customer reply processing service connecting offer response
 
 ## Next Steps
 
-- **Milestone 5 — React Frontend and Dashboard UI**: **In Progress (Parts A, B & C Completed)**
+- **Milestone 5 — React Frontend and Dashboard UI**: **In Progress (Parts A, B, C & D Completed)**
   - **Part A: React Frontend Foundation (Completed)**: SaaS application shell, responsive sidebar navigation, contextual header, declarative React Router DOM 7 routing, API client, design system tokens, and production build verification.
   - **Part B: Revenue Dashboard & Metrics UI (Completed)**: Live metrics cards (`GET /api/dashboard/metrics`), appointment recovery rates, offer lifecycle breakdowns, error/loading states, zero-data hints, and Vanilla CSS styling.
   - **Part C: Recovery Workspace & Candidate Matching UI (Completed)**: Cancelled appointment queue (`GET /api/appointments/cancelled`), candidate matching inspector (`GET /api/appointments/:id/matches`), slot availability & staff qualification badges, deterministic ranking presentation, offer creation (`POST /api/offers`), and collapsible exclusion list.
-  - **Part D: Offer Management & Reply Simulation UI (Upcoming)**: Offer lifecycle tracking, human approval actions, and simulated reply triggers (`YES`, `NO`, `NO_REPLY`).
+  - **Part D: Offer Management & Reply Simulation UI (Completed)**: Offer registry, status filter bar, human approval workflow (`PATCH /api/offers/:id/status`), customer response simulation (`POST /api/offers/:id/simulate-reply` with YES/NO/NO_REPLY), and transactional booking recovery display.
   - **Part E: Conversational AI Agent Studio UI (Upcoming)**: Interactive chat interface (`POST /api/agent/chat`) with transparent tool execution telemetry.
 
 - **Milestone 6 — Integration, Testing, Security, Documentation and Certification Demo**:
