@@ -13,8 +13,10 @@ This document tracks completed work, current progress, architectural decisions, 
 | **Milestone 2** | **Core Booking and Recovery Logic**: Cancellation detection, eligibility engine, waitlist matching, and safe booking confirmation | **Completed** | Parts A, B, and C verified with 54 tests across cancellation, matching, and booking |
 | **Milestone 3** | **Offers and Revenue Tracking**: Part A (Offer Creation & Tracking), Part B (AI Message Drafting & Fallbacks), Part C (Revenue Tracking & Dashboard Metrics) | **Completed** | Parts A, B, and C verified with 49 tests (123 total project tests passed, 0 failed, 36 suites) |
 | **Milestone 4** | **Genuine AI Agent with OpenAI Tool Calling**: Part A (Foundation & Tool Schemas - Completed), Part B (Recovery Workflow & Tool Integration - Completed), Part C (Reply Simulation & Autonomous Confirmation - Completed) | **Completed** | Parts A, B, and C verified with 72 tests across agent, agentRoutes, and replySimulator (195 total project tests passed, 0 failed, 49 suites) |
-| **Milestone 5** | **React Frontend and Dashboard UI**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics | **In Progress (Parts A, B, C & D Completed)** | Parts A (Frontend Foundation), B (Live Revenue Dashboard), C (Recovery Workspace), and D (Offer Management & Reply Simulation) completed and verified. |
-| **Milestone 6** | **Integration, Testing, Security, Documentation and Certification Demo**: End-to-end integration, comprehensive testing, security review, documentation, and certification-ready demonstration | **In Progress (Step 1 Completed)** | Step 1 (HTTP Integration Testing) completed and verified with 13 tests across 6 suites (208 total tests passing across 55 suites) |
+| **Milestone 5** | **React Frontend and Dashboard UI**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics | **Completed** | Parts A, B, C, and D verified; Vite production build verified |
+| **Milestone 6** | **Integration, Testing, Security Audit & AI Frontend**: End-to-end integration tests, complete AI recovery agent interface, and security audit | **Completed** | Step 1 (HTTP integration, 208 total tests passing), Step 2 (AI Frontend), Step 3 (Security audit complete; remediation deferred). Merged in ca35d09 |
+| **Milestone 7** | **Final Project Documentation**: Comprehensive README, technical architecture, deployment guide, certification demo script, and project status | **Completed** | README.md, docs/ARCHITECTURE.md, docs/DEPLOYMENT_GUIDE.md, docs/CERTIFICATION_DEMO.md, and PROJECT_STATUS.md verified |
+| **Milestone 8** | **Deployment Preparation & Certification Submission**: Free-tier cloud deployment preparation, Render setup, and final evaluation | **Pending** | Deployment status: NOT YET DEPLOYED; scheduled next |
 
 ---
 
@@ -1062,20 +1064,89 @@ Replaced the static M5 Part A placeholder at `/agent` with a fully functional co
 
 ---
 
+## Milestone 6 — Step 3: Full Application Security Review (Completed — Remediation Deferred)
+
+### 1. Scope & Audit Status
+Completed a comprehensive security review across all 6 core application dimensions:
+1. Secrets and environment variable management
+2. Backend API validation, SQL injection risk, and HTTP security
+3. AI agent prompt injection, tool isolation, and PII protection
+4. Transactional booking integrity and concurrency safety
+5. Frontend content rendering, XSS defense, and error handling
+6. Dependency vulnerability audit and production deployment risks
+
+*Status: Completed (Audit Complete; All 7 Findings Documented; Remediation Explicitly Deferred for Prototype Phase).*
+
+### 2. Audit Findings Summary
+- **High Severity**:
+  - **SEC-01**: Missing Rate Limiting on API routes (specifically `POST /api/agent/chat` and `POST /api/offers/:id/simulate-reply`), creating potential for resource exhaustion or OpenAI credit draining.
+  - **SEC-02**: Missing Authentication & Access Control on all backend API routes (identified as an intentional prototype limitation for local demonstration; mandatory before multi-tenant or public deployment).
+- **Medium Severity**:
+  - **SEC-03**: Missing HTTP Security Headers (no Helmet middleware; `X-Powered-By: Express` exposed; missing `X-Content-Type-Options: nosniff` and `X-Frame-Options`).
+  - **SEC-04**: CORS Origin Configuration coupled to `VITE_API_BASE_URL` rather than a dedicated `CORS_ORIGIN` environment variable.
+  - **SEC-05**: Dependency Vulnerabilities (`server/` audit flagged 3 moderate issues: `uuid < 11.1.1` [GHSA-w5hq-g745-h8pq] and `minimatch 7.0.0-11.0.0` via devDependency `nodemon` [GHSA-g3hv-75wg-m249]). `client/` audit found 0 vulnerabilities.
+- **Low / Informational**:
+  - **SEC-06**: Inconsistent `dotenv` configuration path in `server/app.js` (`server/.env` vs repository root `.env`).
+  - **SEC-07**: Server error handler (`errorHandler.js`) exposes `err.message` in 500 responses without masking generic messages in production mode.
+
+### 3. Features Verified as Secure
+- **SQL Injection Defense**: 100% of SQL statements across all domain services utilize parameterized queries with `?` bind variables via `node:sqlite` `prepare()`. Zero raw string interpolation.
+- **Booking Concurrency & Integrity**: All booking transitions encapsulated in SQLite `BEGIN IMMEDIATE` transactions with guarded atomic updates (`WHERE id = ? AND status = 'cancelled'` / `'waiting'`). Confirmed duplicate YES collision safety.
+- **AI Tool Isolation**: Strict JSON schemas with `additionalProperties: false`, limited to the 7 approved function tools. AI cannot access raw database queries or filesystem commands.
+- **Human-in-the-Loop Safeguards**: AI can only draft offers in `pending_approval`; cannot approve, send, or dispatch offers.
+- **Defensive PII Sanitization**: `sanitizePii()` recursively strips customer phone numbers and emails prior to model payload serialization.
+- **Secret Protection**: Zero exposed API keys in repository, git history, or client bundle outputs. `.env` strictly gitignored.
+- **XSS Protection**: Zero uses of `dangerouslySetInnerHTML` or `innerHTML`. Standard React JSX escaping enforced throughout.
+
+---
+
+## Milestone 1–6 Completion Summary
+
+- **Codebase Baseline:** All implementation from Milestone 1 through Milestone 6 is completed and merged into `main` at commit `ca35d09`.
+- **Backend Test Suite:** **208 passed across 55 test suites (100% pass rate)** using native `node:test` and in-memory SQLite (`:memory:`).
+- **Frontend Build:** Client production build (`npm run build` in `client/`) compiles cleanly via Vite with 0 errors and 0 warnings.
+- **Live Verification Status:**
+  - `GET /api/health` verified responsive with `{ status: 'ok' }`.
+  - HTTP 400 validation guards across appointments, offers, and agent routes verified.
+  - Live OpenAI verification remains **pending** because the active API key returned HTTP 429 (`insufficient_quota`). Graceful error handling and deterministic fallbacks were verified.
+  - Playwright browser binary download was restricted by sandboxed environment network/CDN policies; UI verification was completed via responsive code review, style audit down to 320px mobile viewport, and production build validation.
+  - Live WhatsApp/SMS transport is unintegrated by design; customer replies (`YES`, `NO`, `NO_REPLY`) are simulated via `POST /api/offers/:id/simulate-reply`.
+  - The application has no authentication/RBAC and is strictly an evaluation prototype.
+
+---
+
+## Milestone 7 — Final Project Documentation (Completed)
+
+Comprehensive, professional documentation produced and verified across all required assets:
+
+1. **`README.md`**: Professional, publication-ready repository guide covering problem statement, business value, features, AI tool definitions, architecture, Windows setup instructions, test commands, API overview, security considerations, limitations, and roadmap.
+2. **`docs/ARCHITECTURE.md`**: Detailed technical design document featuring Mermaid 3-tier architecture diagrams, Entity-Relationship diagrams (ERD), 9-step recovery sequence diagrams, OpenAI tool-calling loop flowcharts, concurrency mechanics (`BEGIN IMMEDIATE`), PII sanitization rules, and design trade-offs.
+3. **`docs/DEPLOYMENT_GUIDE.md`**: Free-tier cloud deployment guide targeting Render ($0 budget), detailing cold-start sleep behavior (15-min inactivity), ephemeral SQLite disk limitations, seed data reloading mechanisms, configuration prerequisites (monorepo subdirectories, CORS, `VITE_API_BASE_URL`), step-by-step dashboard instructions, and post-deployment verification checklist. Explicitly marks deployment as **NOT YET DEPLOYED**.
+4. **`docs/CERTIFICATION_DEMO.md`**: Complete 10–15 minute evaluator demonstration script structured into 8 distinct scenes with timings, route URLs, speaker talking points, screen actions, and an emergency fallback plan for OpenAI HTTP 429 quota exhaustion.
+5. **`PROJECT_STATUS.md`**: Fully updated with M1–M6 delivery records, M6 Step 3 security audit findings, deferred remediation rationale, M7 documentation verification, and next steps.
+
+### Documentation Verification Checklist
+- [x] All internal markdown file links verified.
+- [x] Documented CLI commands match actual `package.json` scripts (`npm test`, `npm run seed`, `npm run dev`, `npm run build`).
+- [x] Documented API routes verified against actual Express route modules (`appointments.js`, `offers.js`, `dashboard.js`, `agent.js`).
+- [x] Deployment status explicitly stated as **NOT YET DEPLOYED**.
+- [x] Zero fabricated metrics, test results, deployment URLs, or AI outputs.
+
+---
+
 ## Known Issues / Constraints & Limitations
 
-- Node.js emits an `ExperimentalWarning: SQLite is an experimental feature` log in Node 22, which is expected for `node:sqlite` and does not affect runtime reliability or test execution.
-- Single-process in-memory SQLite instances are inherently isolated per test runner thread; production environments using file-based SQLite rely on WAL mode and `BEGIN IMMEDIATE` for cross-process concurrency safety.
-- Live WhatsApp/SMS messaging transport remains deferred until the basic application is fully operational; offers transition to `sent` through human approval, with simulated customer responses (YES, NO, and NO_REPLY) driving booking recovery workflows.
-- Revenue calculations currently reflect active catalog service pricing; historical price versioning is not implemented as per Milestone 3 constraints.
-- Real-time OpenAI API calls require an active OpenAI API key with available credits configured in the server's `.env` file; when credits are exhausted or unconfigured, the backend returns clear error envelopes which the frontend renders with retry guidance.
+- **Node 22 Experimental SQLite Warning:** Node.js emits `ExperimentalWarning: SQLite is an experimental feature` when initializing `node:sqlite`. This is normal behavior for Node 22 and does not affect runtime reliability.
+- **Ephemeral Filesystem on Free Hosts:** Embedded SQLite on free cloud tiers (such as Render) resets on service sleep or redeploy. Seed data is safely reloaded on startup via `initialise()`. Persistent storage requires paid cloud volumes or migration to PostgreSQL.
+- **Simulated Customer Replies:** Live WhatsApp/SMS transport remains deferred; customer replies (`YES`, `NO`, `NO_REPLY`) are simulated through the dedicated reply simulation service.
+- **No Authentication / Access Control (SEC-02):** The application is an evaluation prototype with no authentication, RBAC, or session management. It must not be deployed to public multi-tenant environments without security hardening.
+- **OpenAI API Quota Dependency:** Live OpenAI calls require funded API credits. When credits are exhausted (HTTP 429), the system surfaces clear error envelopes and utilizes deterministic fallback templates.
 
 ---
 
 ## Next Steps
 
-- **Milestone 6 — Integration, Testing, Security, Documentation and Certification Demo**:
-  - Step 1: HTTP Integration Testing (Completed).
-  - Step 2: Complete AI Agent Frontend (Completed).
-  - Step 3: Security Review, Audit, and Hardening.
-  - Step 4: Final Documentation & Certification Demonstration.
+- **Milestone 8 — Deployment Preparation & Certification Submission**:
+  - Review Render deployment prerequisites (monorepo configuration, CORS alignment).
+  - Prepare submission bundle and final demonstration video recording.
+  - Final certification review and submission.
