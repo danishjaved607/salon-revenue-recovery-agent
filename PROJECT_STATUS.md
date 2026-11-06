@@ -934,6 +934,83 @@ Implemented a robust customer reply processing service connecting offer response
 
 ---
 
+## Milestone 6 — Step 2 Implementation Summary: Complete AI Agent Frontend
+
+### 1. Scope & Core Features
+Replaced the static M5 Part A placeholder at `/agent` with a fully functional conversational AI Recovery Agent interface connected to the existing backend (`POST /api/agent/chat` and `GET /api/health`).
+
+- **Header & Live Health Verification**:
+  - Displays "Autonomous Recovery Agent" title and clear purpose description.
+  - Live connection status indicator ("Backend Connected" / "Backend Offline") backed by actual health verification via `GET /api/health`. Zero simulated or fake live badges.
+  - "New Conversation" reset action allowing salon managers to clear the conversation thread and start fresh.
+
+- **Human-in-the-Loop Safeguard Notice**:
+  - Prominent banner explaining operational boundaries: The agent can inspect cancellations, match waitlisted customers, explain eligibility, and draft recovery offers, but **explicit salon staff approval** in the Offers screen is strictly required before any offer can be sent.
+  - Zero autonomous offer dispatching capabilities added.
+
+- **Welcome State & Suggested Prompts**:
+  - Empty state greeting explaining recovery capabilities.
+  - Five interactive suggested prompt chips:
+    1. *"Find cancelled appointments."*
+    2. *"Find eligible waitlist customers."*
+    3. *"Explain why a customer is eligible."*
+    4. *"Prepare recovery offers."*
+    5. *"Show recovery performance."*
+  - Clicking any prompt immediately populates the input and sends the query.
+
+- **Conversational Thread**:
+  - Distinct message styling: Right-aligned user bubbles with blush-pink tint; left-aligned agent cards with crisp borders and subtle elevation.
+  - Sender avatars and formatted timestamps.
+  - Preserved line breaks and clean whitespace formatting.
+  - Animated typing indicator with pulsing dots while the agent orchestrates tools.
+  - Error banner displaying structured error codes, explanatory messages (e.g. `MISSING_API_KEY` configuration hints or OpenAI error messages), and a one-click "Retry Last Message" action.
+
+- **Expandable Tool Execution Panel (`ToolExecutionPanel.jsx`)**:
+  - Transparently renders all 7 approved OpenAI tools when present in `toolExecutions` returned by the backend:
+    1. `get_cancelled_appointments` (Inspect Cancelled Appointments)
+    2. `get_appointment_details` (Retrieve Appointment Details)
+    3. `find_eligible_waitlist_candidates` (Match Eligible Candidates)
+    4. `explain_candidate_eligibility` (Explain Candidate Eligibility)
+    5. `create_recovery_offer` (Draft Recovery Offer)
+    6. `get_offer_status` (Check Offer Status)
+    7. `get_dashboard_metrics` (Retrieve Revenue Metrics)
+  - For each execution, displays: Tool name, status badge (`Success` / `Failed`), safe inputs chips, human-readable safe output summary, error details if execution failed, and a collapsible raw JSON payload inspector.
+  - Zero fabricated tool executions or outputs; renders strictly from actual backend telemetry.
+
+- **Message Composer**:
+  - Multiline auto-expanding textarea with Enter to send and Shift+Enter for new line.
+  - Max 2000 character limit counter (`0 / 2000`) matching backend schema validation.
+  - Send button with loading spinner, disabled during request execution and when input is empty.
+
+### 2. Files Created and Modified
+- **Created**:
+  - `client/src/api/agent.js`: API wrapper exporting `sendAgentMessage(message, conversationHistory)` and `checkAgentHealth()`, sanitizing history to `{ role: 'user' | 'assistant', content: string }`.
+  - `client/src/components/ToolExecutionPanel.jsx`: Expandable tool execution visualizer for all 7 agent tools with safe output summarization, error badges, and payload inspection.
+- **Modified**:
+  - `client/src/pages/AgentPage.jsx`: Replaced placeholder with full conversational AI interface, live health check, safeguard banner, suggested prompts, message history, and error recovery.
+  - `client/src/styles/pages.css`: Added responsive CSS for chat container, message bubbles, tool execution cards, composer, safeguard banner, and mobile accommodations.
+  - `PROJECT_STATUS.md`: Documented Milestone 6 Step 2 implementation, API contracts, and test verification results.
+
+### 3. Build & Test Verification
+- **Client Production Build**:
+  - `npm run build` executed in `client/`:
+  - 96 modules transformed cleanly.
+  - Production bundles generated in 909ms with 0 errors and 0 warnings.
+- **Backend Test Suite**:
+  - `npm test` executed in `server/`:
+  - **208/208 tests passing across 55 suites (100% pass rate)**.
+- **Live Backend Verification**:
+  - Tested `GET /api/health` against running backend on port 3000: returned `{ status: 'ok' }`.
+  - Tested `POST /api/agent/chat` validation: empty input correctly rejected with `400 INVALID_INPUT`.
+  - Tested live OpenAI integration: backend correctly contacted OpenAI API and reported quota limitation (`429 You have no credits remaining. Add credits to continue...`), displaying the error card and retry action on the frontend as expected.
+- **Browser Automation Note**:
+  - Direct Playwright browser automation encountered offline CDN download restrictions (404 on Azure CDN in sandboxed environment). UI layout, styles, responsiveness down to 320px mobile, production build, and API integration were verified via code inspection and build suites.
+- **Code Review Refinements**:
+  - Fixed retry duplicate message behavior in `AgentPage.jsx`: clicking "Retry Last Message" reuses and refreshes the existing failed user message in conversation history instead of appending a duplicate user bubble.
+  - Removed trailing whitespace in `AgentPage.jsx` and cleaned extra blank line at EOF in `PROJECT_STATUS.md`.
+
+---
+
 ## Architectural Decisions
 
 1. **Node 22 Built-in `node:sqlite` (`DatabaseSync`)**:
@@ -980,6 +1057,8 @@ Implemented a robust customer reply processing service connecting offer response
     - Eliminates Tailwind and third-party CSS overhead in favor of standard CSS custom properties for colors, typography, elevations, and radii, enabling instant future theme customization without refactoring components.
 21. **Standardized Axios API Envelope Interceptor**:
     - Centralizes extraction of the standard backend error envelope (`error.response?.data?.error?.message`) and handles transport/timeout failures gracefully across the entire React application.
+22. **Client-Side Conversation History Sanitation & Safety**:
+    - Frontend API wrapper `client/src/api/agent.js` filters conversation history strictly to `{ role: 'user' | 'assistant', content: string }` and slices to the 20 most recent messages, matching backend validation rules and preventing unexpected 400 rejection errors.
 
 ---
 
@@ -989,18 +1068,14 @@ Implemented a robust customer reply processing service connecting offer response
 - Single-process in-memory SQLite instances are inherently isolated per test runner thread; production environments using file-based SQLite rely on WAL mode and `BEGIN IMMEDIATE` for cross-process concurrency safety.
 - Live WhatsApp/SMS messaging transport remains deferred until the basic application is fully operational; offers transition to `sent` through human approval, with simulated customer responses (YES, NO, and NO_REPLY) driving booking recovery workflows.
 - Revenue calculations currently reflect active catalog service pricing; historical price versioning is not implemented as per Milestone 3 constraints.
+- Real-time OpenAI API calls require an active OpenAI API key with available credits configured in the server's `.env` file; when credits are exhausted or unconfigured, the backend returns clear error envelopes which the frontend renders with retry guidance.
 
 ---
 
 ## Next Steps
 
-- **Milestone 5 — React Frontend and Dashboard UI**: **In Progress (Parts A, B, C & D Completed)**
-  - **Part A: React Frontend Foundation (Completed)**: SaaS application shell, responsive sidebar navigation, contextual header, declarative React Router DOM 7 routing, API client, design system tokens, and production build verification.
-  - **Part B: Revenue Dashboard & Metrics UI (Completed)**: Live metrics cards (`GET /api/dashboard/metrics`), appointment recovery rates, offer lifecycle breakdowns, error/loading states, zero-data hints, and Vanilla CSS styling.
-  - **Part C: Recovery Workspace & Candidate Matching UI (Completed)**: Cancelled appointment queue (`GET /api/appointments/cancelled`), candidate matching inspector (`GET /api/appointments/:id/matches`), slot availability & staff qualification badges, deterministic ranking presentation, offer creation (`POST /api/offers`), and collapsible exclusion list.
-  - **Part D: Offer Management & Reply Simulation UI (Completed)**: Offer registry, status filter bar, human approval workflow (`PATCH /api/offers/:id/status`), customer response simulation (`POST /api/offers/:id/simulate-reply` with YES/NO/NO_REPLY), and transactional booking recovery display.
-  - **Part E: Conversational AI Agent Studio UI (Upcoming)**: Interactive chat interface (`POST /api/agent/chat`) with transparent tool execution telemetry.
-
 - **Milestone 6 — Integration, Testing, Security, Documentation and Certification Demo**:
-  - End-to-end integration across frontend, backend, and AI agent.
-  - Comprehensive testing, security review, documentation, and a certification-ready demonstration.
+  - Step 1: HTTP Integration Testing (Completed).
+  - Step 2: Complete AI Agent Frontend (Completed).
+  - Step 3: Security Review, Audit, and Hardening.
+  - Step 4: Final Documentation & Certification Demonstration.
