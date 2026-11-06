@@ -13,7 +13,7 @@ This document tracks completed work, current progress, architectural decisions, 
 | **Milestone 2** | **Core Booking and Recovery Logic**: Cancellation detection, eligibility engine, waitlist matching, and safe booking confirmation | **Completed** | Parts A, B, and C verified with 54 tests across cancellation, matching, and booking |
 | **Milestone 3** | **Offers and Revenue Tracking**: Part A (Offer Creation & Tracking), Part B (AI Message Drafting & Fallbacks), Part C (Revenue Tracking & Dashboard Metrics) | **Completed** | Parts A, B, and C verified with 49 tests (123 total project tests passed, 0 failed, 36 suites) |
 | **Milestone 4** | **Genuine AI Agent with OpenAI Tool Calling**: Part A (Foundation & Tool Schemas - Completed), Part B (Recovery Workflow & Tool Integration - Completed), Part C (Reply Simulation & Autonomous Confirmation - Completed) | **Completed** | Parts A, B, and C verified with 72 tests across agent, agentRoutes, and replySimulator (195 total project tests passed, 0 failed, 49 suites) |
-| **Milestone 5** | **React Frontend and Dashboard UI**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics | **Not Started** | Depends on backend & AI agent API |
+| **Milestone 5** | **React Frontend and Dashboard UI**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics | **In Progress (Parts A, B, C & D Completed)** | Parts A (Frontend Foundation), B (Live Revenue Dashboard), C (Recovery Workspace), and D (Offer Management & Reply Simulation) completed and verified. |
 | **Milestone 6** | **Integration, Testing, Security, Documentation and Certification Demo**: End-to-end integration, comprehensive testing, security review, documentation, and certification-ready demonstration | **Not Started** | Final milestone |
 
 ---
@@ -651,6 +651,232 @@ Implemented a robust customer reply processing service connecting offer response
 
 ---
 
+## Milestone 5 — Part A Implementation Summary: React Frontend Foundation
+
+### 1. Application Layout & Design Tokens
+- **Design Direction**: Professional SaaS shell with a premium light theme tailored for salon business software. Clean white and light blush neutral backgrounds (`#faf7f8`, `#f8f4f5`, `#ffffff`), soft blush-pink primary accents (`#c96b83`, light tint `#faedf0`), dark charcoal typography (`#1f242e`, `#475467`), subtle borders (`#ede5e7`), and soft elevation shadows.
+- **Typography**: Google Fonts integration (`Inter` for body readability and `Plus Jakarta Sans` for elegant headings), with fluid typography using CSS `clamp()` (`--font-size-xs` to `--font-size-2xl`).
+- **Complete Responsive Design System**:
+  - Scalable across viewports from 320px compact mobile up to 2560px 4K/ultrawide displays.
+  - Breakpoints: `<= 480px` (compact mobile), `<= 900px` (tablet & mobile drawer), `>= 1920px` (ultrawide constraint 1560px), `>= 2560px` (4K constraint 1720px).
+  - Fluid grid layouts: `repeat(auto-fit, minmax(min(100%, 320px), 1fr))`.
+  - Overflow prevention: `overflow-x: hidden` and `max-width: 100vw` across root containers.
+  - Accessibility: WCAG 44px touch targets (`--touch-target-min: 44px`), visible `:focus-visible` rings, `@media (prefers-reduced-motion: reduce)`, skip-to-content link (`.skip-link`), and Escape key listener with body scroll locking when mobile drawer is open.
+- **CSS Architecture**: Organized cleanly into:
+  - `client/src/styles/index.css`: Centralized CSS custom properties (colors, fluid fonts, fluid spacing, radii, elevations, transitions, focus states, skip link) and global reset.
+  - `client/src/styles/layout.css`: SaaS shell container, fixed/sticky sidebar, brand block, mobile close button, navigation links with active state pill indicator, system status dot, sticky header with mobile drawer toggle button, and responsive viewport padding.
+  - `client/src/styles/pages.css`: Reusable component cards (`.content-card`), milestone notice banners (`.milestone-banner`), card headers with icon boxes, feature bullet lists, backend API endpoint reference badges with wrapping guards, and 404 page styling.
+
+### 2. Sidebar Navigation (`client/src/components/Sidebar.jsx`)
+- Responsive sidebar navigation containing:
+  - Salon Revenue Recovery Agent branding with scissors logo icon.
+  - Navigation links with active route indicators:
+    - **Dashboard** (`/dashboard`)
+    - **Recovery Workspace** (`/recovery-workspace`)
+    - **Offers** (`/offers`)
+    - **AI Agent** (`/agent`)
+  - Semantic inline SVG icons (Lucide-style) avoiding external icon package dependencies.
+  - System status indicator in the sidebar footer ("Agent Engine Active").
+  - Mobile responsive drawer with sliding transition (`transform: translateX(-100%)` to `translateX(0)`), mobile close button, and semi-transparent backdrop blur overlay (`.sidebar-overlay`) with keyboard accessibility.
+  - Meets 44px touch target guidelines for all interactive links and buttons.
+
+### 3. Reusable Header (`client/src/components/Header.jsx`)
+- Dynamic route awareness reading current path from React Router (`useLocation()`):
+  - Automatically updates page heading and contextual subtitle based on active route.
+- Mobile menu toggle button (`.mobile-menu-btn`) accessible on screens `<= 900px` with `aria-expanded` and `aria-controls="app-sidebar"`.
+- Real-time system status pill badge ("System Active") with soft blush accent styling, auto-collapsing to dot indicator on compact mobile `<= 480px` to protect title space.
+- Zero fake user profiles or mock business data.
+
+### 4. Declarative Routing & Page Placeholders (`client/src/App.jsx`)
+- Configured using React Router DOM 7 declarative `BrowserRouter`, `Routes`, `Route`, `Navigate`, and `Outlet` layout structure:
+  - `/` &rarr; Redirects to `/dashboard`.
+  - `/dashboard` &rarr; `DashboardPage.jsx` (Overview of recovered revenue, slot fill rates, and turnaround metrics).
+  - `/recovery-workspace` &rarr; `RecoveryWorkspacePage.jsx` (Cancelled appointment queue and candidate matching scoring).
+  - `/offers` &rarr; `OffersPage.jsx` (Offer lifecycle management, approval gating, and reply simulation).
+  - `/agent` &rarr; `AgentPage.jsx` (Conversational AI recovery concierge, transparent AI tool execution summaries, and safety safeguards).
+  - `*` &rarr; `NotFoundPage.jsx` (Clean 404 fallback with return-to-dashboard navigation).
+- All pages feature structured cards clearly detailing upcoming Milestone 5 parts and referencing real backend API routes (`GET /api/dashboard/metrics`, `GET /api/appointments/cancelled`, `GET /api/appointments/:id/matches`, `GET /api/offers`, `POST /api/offers/:id/simulate-reply`, `POST /api/agent/chat`). Zero fake mock metrics that could be mistaken for live backend data.
+- Placeholder wording adheres strictly to requirements: utilizes "transparent AI tool execution summaries" and clearly attributes booking confirmation to simulated customer YES replies with backend transactional safeguards.
+
+### 5. API Client Foundation (`client/src/api/client.js`)
+- Reusable Axios instance with:
+  - `baseURL: '/api'` utilizing the existing Vite development proxy (`http://localhost:3000`) and standard Express serving in production.
+  - `timeout: 15000` (15-second request timeout).
+  - Standard JSON headers (`Content-Type: application/json`, `Accept: application/json`).
+  - Response interceptor normalizing backend error envelopes (`error.response?.data?.error?.message`) and code (`error.response?.data?.error?.code`).
+  - Clear network error handling (`Unable to connect to the salon revenue server`) and timeout error handling.
+  - Returns raw `response.data` on success.
+  - Zero hardcoded credentials or secrets.
+
+### 6. Quality & Verification
+- **Vite Production Build**: `npm run build` executed in `client/`:
+  - 32 modules transformed.
+  - Production bundles generated cleanly: `dist/index.html` (0.94 kB), `dist/assets/index-*.css` (11.24 kB), `dist/assets/index-*.js` (202.51 kB).
+  - 0 build errors, 0 warnings.
+- **Backend Integrity**: All 49 backend test suites intact; zero modifications to server code or configuration.
+- **Installed Dependencies**:
+  - `react`: ^18.3.1
+  - `react-dom`: ^18.3.1
+  - `react-router-dom`: ^7.18.5
+  - `axios`: ^1.7.2
+  - `vite`: ^8.3.5
+  - `@vitejs/plugin-react`: ^6.2.1
+
+---
+
+## Milestone 5 — Part B Implementation Summary: Live Revenue Dashboard
+
+### 1. Scope & Core Features
+- Replaced the static M5 Part A Dashboard placeholder with a functional dashboard integrated with the real backend API endpoint `GET /api/dashboard/metrics`.
+- **Revenue Recovery Overview**:
+  - Live metric card and summary breakdown for Recovered Revenue (`metrics.recoveredRevenue`), formatted in PKR.
+  - Live counts for Recovered Bookings (`metrics.recoveredBookingsCount`).
+  - Live counts for Cancelled Appointments (`metrics.cancelledBookingsCount`).
+  - Live values for Lost Revenue at Risk (`metrics.lostRevenue`), formatted in PKR.
+  - Appointment Recovery Rate percentage (`metrics.appointmentRecoveryRate`).
+- **Offer Performance & Lifecycle Overview**:
+  - Total Offers Created counter (`metrics.offersCreatedCount`).
+  - Offers Accepted counter (`metrics.offersAcceptedCount`).
+  - Offer Acceptance Rate percentage (`metrics.offerAcceptanceRate`).
+  - Complete status breakdown grid covering all 7 lifecycle states:
+    - `pending_approval`: Pending Approval (amber/warning)
+    - `approved`: Approved (sky/info)
+    - `sent`: Sent (mauve/accent)
+    - `accepted`: Accepted (green/success)
+    - `declined`: Declined (red/danger)
+    - `no_reply`: No Reply (muted grey)
+    - `expired`: Expired (subtle grey)
+- **Recovery Activity**:
+  - Retained an informative, clearly worded placeholder card indicating that recovery transactions, waitlist candidate matches, and customer reply audits take place through the Recovery Workspace and Offer Management screens (per strict project scope).
+- **Scope Compliance**:
+  - Did NOT implement service-level tables, historical growth trends, forecasting, or mock data.
+  - Zero external chart dependencies installed. Pure semantic HTML and Vanilla CSS design tokens.
+
+### 2. API Integration & Reliability
+- Created dedicated API helper module: `client/src/api/dashboard.js` exporting `getDashboardMetrics()`.
+- Uses existing Axios instance `client/src/api/client.js` with base URL `/api` proxied to Express backend.
+- Managed React component state:
+  - `loading`: Clean loading card with animated spinner and polite ARIA status.
+  - `error`: Error alert card displaying normalized server error messages with a "Retry Connection" action.
+  - `metrics`: Live data parsed directly from the backend response envelope (`response.metrics`).
+  - Mount/unmount lifecycle guard (`isCancelled` flag) preventing memory leaks or stale state updates.
+  - Informative empty/initial state hints for zero recovered bookings and zero offers.
+
+### 3. Files Created and Modified
+- **Created**:
+  - `client/src/api/dashboard.js`: Exporting `getDashboardMetrics()` using the central Axios client.
+- **Modified**:
+  - `client/src/pages/DashboardPage.jsx`: Replaced static cards with live React state, API fetching, KPI cards, and status breakdowns.
+  - `client/src/styles/pages.css`: Added responsive styles for `.metrics-overview-grid`, `.metric-card`, `.status-breakdown-grid`, `.overview-stat-row`, `.dashboard-loading-card`, `.dashboard-error-card`, and compact mobile accommodations.
+  - `PROJECT_STATUS.md`: Documented Part B progress, architecture, and verification results.
+
+### 4. Build & Test Verification
+- **Client Production Build**:
+  - `npm run build` executed in `client/`:
+  - 92 modules transformed cleanly.
+  - Built in 911ms with 0 errors and 0 warnings.
+- **Backend Test Suite**:
+  - `npm test` executed in `server/`:
+  - 195/195 tests passing across 49 suites (100% pass rate).
+- **Live Backend Verification**:
+  - Queried `http://localhost:3000/api/dashboard/metrics` directly via HTTP; verified exact JSON contract matches frontend expectations.
+- **Browser Testing Note**:
+  - Direct browser automation via Playwright was attempted; Playwright driver download failed due to network isolation/restrictions (404 on Azure Edge CDN). Visual browser testing was therefore not performed, but frontend production build, code verification, and live backend HTTP queries passed cleanly.
+
+---
+
+## Milestone 5 — Part C Implementation Summary: Recovery Workspace & Candidate Matching
+
+### 1. Scope & Core Features
+- Replaced the static M5 Part A Recovery Workspace placeholder with an interactive master-detail matching interface connected to real backend services.
+- **Cancelled Appointment Queue**:
+  - Live retrieval from `GET /api/appointments/cancelled`.
+  - Displays service name, appointment value in PKR, appointment date, scheduled time interval, assigned staff, and original cancellation reason.
+  - Interactive selection highlighting active slot with blush-pink border and gradient accent.
+  - Automatic selection of the first cancelled appointment upon load.
+  - Graceful empty state when zero cancelled appointments are found.
+- **Candidate Matching & Slot Inspection**:
+  - Fetches deterministic match results from `GET /api/appointments/:id/matches` whenever a slot is selected.
+  - Slot summary card presenting date, time bucket, assigned staff qualification status (`Qualified` / `Not Qualified`), and staff schedule availability (`Available` / `Schedule Conflict`).
+  - Active offers banner querying `GET /api/appointments/:id/offers` to prevent duplicate efforts.
+- **Ranked Eligible Candidates Presentation**:
+  - Displays eligible waitlist candidates strictly following backend-provided deterministic ranking (`priority ASC`, then `addedAt ASC`).
+  - Presents candidate priority chips (`Priority 1`, `Priority 2`), client name, contact details, requested service, and staff preference indicator (`Prefers Any Staff` vs specific staff preference).
+  - Never duplicates business or scoring rules in React.
+- **One-Click Recovery Offer Generation**:
+  - Integrated with `POST /api/offers`, transmitting `appointmentId` and `waitlistId`.
+  - Creates offers in default `pending_approval` status, strictly enforcing human approval.
+  - Inline loading indicator during offer submission with duplicate click locking.
+  - Prevents recreating offers for already active waitlist candidates with disabled state and `Offer: Pending Approval` status badges.
+  - Graceful HTTP 409 duplicate-offer handling with informative feedback alerts.
+  - Automatic refresh of slot offers upon successful creation.
+- **Excluded Candidates Accordion**:
+  - Collapsible accordion section detailing all disqualified waitlist clients.
+  - Presents backend-provided rejection codes (`SERVICE_MISMATCH`, `DATE_NOT_AVAILABLE`, `STAFF_PREFERENCE_MISMATCH`, `NO_CUSTOMER_CONSENT`, etc.) and human-readable explanation messages.
+
+### 2. Files Created and Modified
+- **Created**:
+  - `client/src/api/recovery.js`: Exporting `getCancelledAppointments()`, `getAppointmentMatches()`, `getOffersForAppointment()`, and `createRecoveryOffer()`.
+- **Modified**:
+  - `client/src/pages/RecoveryWorkspacePage.jsx`: Implemented master-detail queue, matching inspector, offer creation, and collapsible exclusion lists.
+  - `client/src/styles/pages.css`: Added responsive styling for `.workspace-layout`, `.queue-card-btn`, `.slot-summary-card`, `.candidate-card`, `.btn-create-offer`, `.offer-active-pill`, and `.excluded-accordion`.
+  - `PROJECT_STATUS.md`: Documented Part C completion, architecture, and verification results.
+
+### 3. Build & Test Verification
+- **Client Production Build**:
+  - `npm run build` executed in `client/`:
+  - 93 modules transformed cleanly.
+  - Built in 726ms with 0 errors and 0 warnings.
+- **Backend Test Suite**:
+  - `npm test` executed in `server/`:
+  - 195/195 tests passing across 49 suites (100% pass rate).
+
+---
+
+## Milestone 5 — Part D Implementation Summary: Offer Management & Reply Simulation
+
+### 1. Scope & Core Features
+- Replaced the static M5 Part A Offer Management placeholder with an interactive registry and reply simulation studio connected to real backend routes.
+- **Offer Registry & Metadata Display**:
+  - Live query via `GET /api/offers`.
+  - Filter bar with live count badges across all 7 supported lifecycle statuses: `pending_approval`, `approved`, `sent`, `accepted`, `declined`, `no_reply`, `expired`.
+  - Comprehensive card presentation displaying customer name, service name, slot date & time, assigned staff member, customer contact info, creation timestamp (`generatedAt`), approval timestamp (`approvedAt`), sent timestamp (`sentAt`), and response timestamp (`respondedAt`).
+  - Customer message draft preview highlighting exact personalized text.
+- **Human Approval Workflow**:
+  - Enforces backend status transition rules without bypassing human review:
+    - Offers in `pending_approval` feature an "Approve Offer" button dispatching `PATCH /api/offers/:id/status` with `{ status: 'approved' }`.
+    - Offers in `approved` feature a "Mark as Sent" button dispatching `PATCH /api/offers/:id/status` with `{ status: 'sent' }`.
+    - Direct transition from `pending_approval` to `sent` is strictly rejected by backend business logic.
+- **Customer Reply Simulation Studio**:
+  - Simulation controls (`YES`, `NO`, `NO_REPLY`) are strictly gated and rendered only for offers in `sent` status.
+  - Interactive simulation triggers `POST /api/offers/:id/simulate-reply`:
+    - `YES`: Customer accepts the offer; executes atomic booking confirmation via `bookingService.confirmBooking()`. Recovers cancelled slot, updates waitlist entry to `booked`, and transitions offer to `accepted`. Displays booking recovered banner only upon backend verification.
+    - `NO`: Customer declines offer; transitions offer to `declined`, preserving appointment in `cancelled` status without creating a booking.
+    - `NO_REPLY`: Records customer non-response; transitions offer to `no_reply`, preserving appointment in `cancelled` status without creating a booking.
+- **Booking Recovery & Concurrency Safety**:
+  - Duplicate click locking and inline loading states (`submittingId`).
+  - Graceful handling of HTTP 409 conflicts (`OFFER_ALREADY_PROCESSED`, `BOOKING_CONFLICT`) with informative feedback alerts.
+  - Automatic refresh of offer list to keep frontend state consistent with backend transactional isolation.
+
+### 2. Files Created and Modified
+- **Created**:
+  - `client/src/api/offers.js`: Exporting `getOffers()`, `getOfferById()`, `updateOfferStatus()`, and `simulateCustomerReply()`.
+- **Modified**:
+  - `client/src/pages/OffersPage.jsx`: Replaced static cards with real-time offer registry, status filtering, human approval controls, and interactive customer reply simulation.
+  - `client/src/styles/pages.css`: Added responsive styling for `.offers-filter-bar`, `.filter-tab-btn`, `.offer-card`, `.status-pill`, `.offer-meta-grid`, `.offer-message-box`, `.simulation-box`, `.btn-sim`, `.btn-approve`, `.btn-send`, and `.outcome-box`.
+  - `PROJECT_STATUS.md`: Documented Part D completion, architecture, and verification results.
+
+### 3. Build & Test Verification
+- **Client Production Build**:
+  - `npm run build` executed in `client/`:
+  - 94 modules transformed cleanly.
+  - Built in 1.17s with 0 errors and 0 warnings.
+- **Backend Test Suite**:
+  - `npm test` executed in `server/`:
+  - 195/195 tests passing across 49 suites (100% pass rate).
+
+---
+
 ## Architectural Decisions
 
 1. **Node 22 Built-in `node:sqlite` (`DatabaseSync`)**:
@@ -693,6 +919,10 @@ Implemented a robust customer reply processing service connecting offer response
     - `get_appointment_details` performs a read-only relational join to provide the LLM with service duration, service price, category, staff name, and customer name, while stripping customer phone numbers and email addresses.
 19. **Atomic Reply Processing and Booking Transition Isolation**:
     - Customer reply simulation delegates acceptance confirmation to `bookingService.confirmBooking()` within `BEGIN IMMEDIATE` transaction, ensuring live slot revalidation, customer conflict checks, and duplicate-offer locking.
+20. **Centralized CSS Design Tokens & Native Custom Properties**:
+    - Eliminates Tailwind and third-party CSS overhead in favor of standard CSS custom properties for colors, typography, elevations, and radii, enabling instant future theme customization without refactoring components.
+21. **Standardized Axios API Envelope Interceptor**:
+    - Centralizes extraction of the standard backend error envelope (`error.response?.data?.error?.message`) and handles transport/timeout failures gracefully across the entire React application.
 
 ---
 
@@ -707,17 +937,12 @@ Implemented a robust customer reply processing service connecting offer response
 
 ## Next Steps
 
-- **Milestone 4 — Genuine AI Agent with OpenAI Tool Calling**: **Completed** (Parts A, B, and C verified with 72 tests across agent, agentRoutes, and replySimulator; 195 total project tests passed).
-  - Part A: Genuine AI Agent Foundation (Completed)
-  - Part B: Backend Integration & Intelligent Recovery Workflow (Completed)
-  - Part C: Simulated Customer Replies & Booking Confirmation (Completed)
-
-- **Milestone 5 — React Frontend and Dashboard UI (Next Milestone)**:
-  - User-facing React + Vite interface for viewing appointments, cancellations, waitlist entries, and recovery opportunities.
-  - Interactive candidate matching cards with eligibility explanations and priority ranking.
-  - Offer management screen supporting staff review (`pending_approval` -> `approved` -> `sent`).
-  - Simulated customer reply controls (`YES`, `NO`, `NO_REPLY`) with live booking confirmation feedback.
-  - Real-time revenue recovery metrics dashboard displaying recovered bookings, recovered revenue, acceptance rate, and recovery rate.
+- **Milestone 5 — React Frontend and Dashboard UI**: **In Progress (Parts A, B, C & D Completed)**
+  - **Part A: React Frontend Foundation (Completed)**: SaaS application shell, responsive sidebar navigation, contextual header, declarative React Router DOM 7 routing, API client, design system tokens, and production build verification.
+  - **Part B: Revenue Dashboard & Metrics UI (Completed)**: Live metrics cards (`GET /api/dashboard/metrics`), appointment recovery rates, offer lifecycle breakdowns, error/loading states, zero-data hints, and Vanilla CSS styling.
+  - **Part C: Recovery Workspace & Candidate Matching UI (Completed)**: Cancelled appointment queue (`GET /api/appointments/cancelled`), candidate matching inspector (`GET /api/appointments/:id/matches`), slot availability & staff qualification badges, deterministic ranking presentation, offer creation (`POST /api/offers`), and collapsible exclusion list.
+  - **Part D: Offer Management & Reply Simulation UI (Completed)**: Offer registry, status filter bar, human approval workflow (`PATCH /api/offers/:id/status`), customer response simulation (`POST /api/offers/:id/simulate-reply` with YES/NO/NO_REPLY), and transactional booking recovery display.
+  - **Part E: Conversational AI Agent Studio UI (Upcoming)**: Interactive chat interface (`POST /api/agent/chat`) with transparent tool execution telemetry.
 
 - **Milestone 6 — Integration, Testing, Security, Documentation and Certification Demo**:
   - End-to-end integration across frontend, backend, and AI agent.
