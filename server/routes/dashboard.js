@@ -11,9 +11,10 @@ const router = express.Router();
 const { getRevenueMetrics } = require('../services/revenueService');
 
 // GET /api/dashboard/metrics — Retrieve revenue tracking and recovery metrics
-router.get('/metrics', (_req, res, next) => {
+router.get('/metrics', (req, res, next) => {
   try {
-    const metrics = getRevenueMetrics();
+    const targetDb = req.app?.locals?.db || undefined;
+    const metrics = getRevenueMetrics(targetDb);
     res.json({
       success: true,
       metrics,

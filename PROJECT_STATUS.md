@@ -14,7 +14,7 @@ This document tracks completed work, current progress, architectural decisions, 
 | **Milestone 3** | **Offers and Revenue Tracking**: Part A (Offer Creation & Tracking), Part B (AI Message Drafting & Fallbacks), Part C (Revenue Tracking & Dashboard Metrics) | **Completed** | Parts A, B, and C verified with 49 tests (123 total project tests passed, 0 failed, 36 suites) |
 | **Milestone 4** | **Genuine AI Agent with OpenAI Tool Calling**: Part A (Foundation & Tool Schemas - Completed), Part B (Recovery Workflow & Tool Integration - Completed), Part C (Reply Simulation & Autonomous Confirmation - Completed) | **Completed** | Parts A, B, and C verified with 72 tests across agent, agentRoutes, and replySimulator (195 total project tests passed, 0 failed, 49 suites) |
 | **Milestone 5** | **React Frontend and Dashboard UI**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics | **In Progress (Parts A, B, C & D Completed)** | Parts A (Frontend Foundation), B (Live Revenue Dashboard), C (Recovery Workspace), and D (Offer Management & Reply Simulation) completed and verified. |
-| **Milestone 6** | **Integration, Testing, Security, Documentation and Certification Demo**: End-to-end integration, comprehensive testing, security review, documentation, and certification-ready demonstration | **Not Started** | Final milestone |
+| **Milestone 6** | **Integration, Testing, Security, Documentation and Certification Demo**: End-to-end integration, comprehensive testing, security review, documentation, and certification-ready demonstration | **In Progress (Step 1 Completed)** | Step 1 (HTTP Integration Testing) completed and verified with 13 tests across 6 suites (208 total tests passing across 55 suites) |
 
 ---
 
@@ -874,6 +874,63 @@ Implemented a robust customer reply processing service connecting offer response
 - **Backend Test Suite**:
   - `npm test` executed in `server/`:
   - 195/195 tests passing across 49 suites (100% pass rate).
+
+---
+
+## Milestone 6 — Step 1 Implementation Summary: HTTP Integration Testing
+
+### 1. Scope & Objective
+- Full end-to-end HTTP route integration testing for the Salon Revenue Recovery Agent on branch `test/m6-http-integration`.
+- Verified the complete multi-step recovery lifecycle over actual ephemeral HTTP servers without mocking domain logic or touching the production database (`server/db/salon.db`).
+- Discovered and resolved database-injection defects in `server/routes/appointments.js` and `server/routes/dashboard.js`, standardizing `req.app?.locals?.db` injection across all backend routes.
+
+### 2. Files Created and Modified
+- **Created**:
+  - `server/tests/e2eIntegration.test.js`: Comprehensive HTTP integration test suite covering 13 tests across 6 suites using native `node:test` and `node:assert/strict`.
+- **Modified**:
+  - `server/routes/appointments.js`: Extracted `const targetDb = req.app?.locals?.db || undefined;` and forwarded `targetDb` to `getCancelledAppointments`, `getAppointmentById`, `validateCancellation`, `cancelAppointment`, `findEligibleCandidates`, `confirmBooking`, and `getOffersForAppointment`.
+  - `server/routes/dashboard.js`: Extracted `const targetDb = req.app?.locals?.db || undefined;` and passed `targetDb` to `getRevenueMetrics(targetDb)`.
+  - `PROJECT_STATUS.md`: Documented Step 1 completion, route contract verifications, test results, and roadmap status.
+
+### 3. Test Scenarios Covered (`server/tests/e2eIntegration.test.js`)
+1. **Full HTTP Recovery Workflow (`apt-001` + `wl-002`)**:
+   - `GET /api/appointments/cancelled` &rarr; identifies cancelled slot `apt-001` (Hair Cut & Blow-Dry, 2500 PKR).
+   - `GET /api/appointments/apt-001/matches` &rarr; confirms waitlist candidate `wl-002` (Noor Fatima, priority 2) is eligible.
+   - `POST /api/offers` with `{ appointmentId: "apt-001", waitlistId: "wl-002" }` &rarr; creates offer in `pending_approval`.
+   - `PATCH /api/offers/:id/status` &rarr; staff approves offer to `approved`.
+   - `PATCH /api/offers/:id/status` &rarr; staff dispatches offer to `sent`.
+   - `POST /api/offers/:id/simulate-reply` with `{ reply: "YES" }` &rarr; customer accepts, recovers slot, transitions waitlist entry to `booked`, and confirms booking.
+   - Verified SQLite database state directly in isolated memory: `apt-001` status `recovered`, customer `cus-004`, `wl-002` status `booked`.
+   - `GET /api/dashboard/metrics` &rarr; verifies metrics reflect 1 recovered booking and 2500 PKR recovered revenue.
+2. **Negative Reply Scenarios (`NO` & `NO_REPLY`)**:
+   - `NO` reply on `apt-002` & `wl-008` &rarr; marks offer as `declined`, preserves appointment in `cancelled`, leaves waitlist as `waiting`, and confirms dashboard recovered revenue remains 0.
+   - `NO_REPLY` on `apt-008` & `wl-006` &rarr; marks offer as `no_reply`, preserves appointment in `cancelled`, leaves waitlist as `waiting`, and confirms dashboard recovered revenue remains 0.
+3. **Human Approval & Lifecycle Restrictions**:
+   - Rejects direct creation with status `sent` (`400 INVALID_STATUS`).
+   - Rejects jumping directly from `pending_approval` to `sent` (`400 OFFER_NOT_APPROVED`).
+   - Rejects customer reply simulation when offer is in `pending_approval` or `approved` (`400 INVALID_OFFER_STATUS`).
+   - Rejects duplicate reply submissions on already-processed offers (`409 OFFER_ALREADY_PROCESSED`).
+4. **Candidate & Offer Validation**:
+   - Rejects offer creation for ineligible candidate with service mismatch (`400 SERVICE_MISMATCH`).
+   - Rejects duplicate active offer for identical slot and candidate (`409 DUPLICATE_ACTIVE_OFFER`).
+5. **Competing Booking Requests (Concurrency Safety)**:
+   - Created two separate approved and sent offers targeting `apt-001` (`wl-001` and `wl-002`).
+   - Submitted concurrent `YES` replies simultaneously via `Promise.all`.
+   - Verified exactly one booking succeeded with `200` (`appointmentRecovered: true`), while the competing request was safely rejected (`409 Conflict`).
+   - Verified SQLite database contains strictly 1 recovered booking for `apt-001`.
+6. **HTTP Route Coverage & Error Envelopes**:
+   - Verified `404 APPOINTMENT_NOT_FOUND` error envelope for non-existent appointment matches query.
+   - Verified `404 OFFER_NOT_FOUND` error envelope for non-existent offer status patch.
+   - Verified `400 INVALID_REPLY` error envelope for empty/malformed simulate-reply payload.
+
+### 4. Build & Test Verification
+- **Integration Test Execution**:
+  - `node --test tests/e2eIntegration.test.js`: 13/13 tests passing across 6 suites in 2.89s.
+- **Full Backend Test Suite**:
+  - `npm test`: **208/208 tests passing across 55 suites (100% pass rate)** in 5.88s.
+- **Database Safety**:
+  - All tests execute against isolated in-memory SQLite instances (`:memory:`).
+  - Production database `server/db/salon.db` was never accessed or mutated.
 
 ---
 
