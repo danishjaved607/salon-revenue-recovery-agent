@@ -5,19 +5,19 @@
 [![Express Version](https://img.shields.io/badge/Express-4.19.2-000000?logo=express)](https://expressjs.com/)
 [![SQLite Engine](https://img.shields.io/badge/SQLite-node%3Asqlite-003B57?logo=sqlite)](https://nodejs.org/api/sqlite.html)
 [![AI Integration](https://img.shields.io/badge/OpenAI-Tool%20Calling-412991?logo=openai)](https://platform.openai.com/)
-[![Tests](https://img.shields.io/badge/Tests-208%20Passed%20%7C%2055%20Suites-brightgreen)]()
-[![Deployment Status](https://img.shields.io/badge/Deployment-NOT%20YET%20DEPLOYED-orange)]()
+[![Tests](https://img.shields.io/badge/Tests-216%20Passed%20%7C%2058%20Suites-brightgreen)]()
+[![Deployment Status](https://img.shields.io/badge/Deployment-PREPARED%20(NOT%20YET%20DEPLOYED)-orange)]()
 
 > **AI Solution Engineering Certification Project**
 > An intelligent, human-in-the-loop revenue recovery solution that automatically identifies cancelled salon slots, qualifies waitlist candidates with deterministic eligibility checks, drafts personalized offers with AI, and executes atomic double-booking-protected confirmations upon customer acceptance.
 
 ---
 
-## Deployment Status: NOT YET DEPLOYED
+## Deployment Status: PREPARED (NOT YET DEPLOYED)
 
 > [!IMPORTANT]
-> **Current Deployment State:** **NOT YET DEPLOYED**
-> All implementation through Milestone 6 has been completed and verified on local environments (`ca35d09`). Public cloud deployment to Render free tier is fully documented in [docs/DEPLOYMENT_GUIDE.md](file:///c:/Users/lenovo/Projects/salon-revenue-recovery-agent/docs/DEPLOYMENT_GUIDE.md) and scheduled for Milestone 8 deployment preparation.
+> **Current Deployment State:** **PREPARED — NOT YET DEPLOYED**
+> Deployment readiness for the free Render hosting tier was established in Milestone 8, including Helmet HTTP security headers, dedicated CORS allowlist, public-demo rate limiters, 500 error masking, and the root `render.yaml` blueprint. The application is verified and ready for live cloud deployment upon certification review. Full deployment instructions are documented in [docs/DEPLOYMENT_GUIDE.md](file:///c:/Users/lenovo/Projects/salon-revenue-recovery-agent/docs/DEPLOYMENT_GUIDE.md).
 
 ---
 
@@ -152,6 +152,7 @@ salon-revenue-recovery-agent/
 ├── .gitignore                    # Excludes node_modules, *.db, .env, build output
 ├── PROJECT_STATUS.md             # Comprehensive milestone tracking & decision records
 ├── README.md                     # Main documentation & developer guide
+├── render.yaml                   # Render Blueprint for monorepo web & static services
 ├── docs/                         # Technical documentation & guides
 │   ├── ARCHITECTURE.md           # System design, data models, concurrency, tool schemas
 │   ├── CERTIFICATION_DEMO.md     # 10–15 min evaluation script & fallback demo plan
@@ -200,6 +201,7 @@ salon-revenue-recovery-agent/
     │   └── .gitkeep              # SQLite storage directory placeholder
     ├── middleware/
     │   ├── errorHandler.js       # Centralized JSON error handler
+    │   ├── rateLimiter.js        # Public-demo rate limiters (agent & mutations)
     │   └── requestLogger.js      # Structured HTTP console logger
     ├── routes/                   # Express API routers
     │   ├── agent.js              # POST /api/agent/chat
@@ -215,11 +217,12 @@ salon-revenue-recovery-agent/
     │   ├── offerService.js       # Offer generation, tracking, & lifecycle updates
     │   ├── replySimulator.js     # Simulated customer replies (YES, NO, NO_REPLY)
     │   └── revenueService.js     # Revenue aggregation & recovery KPI calculations
-    └── tests/                    # Native node:test automated test suites (208 tests)
+    └── tests/                    # Native node:test automated test suites (216 tests)
         ├── agent.test.js         # Tool definitions, schemas, and execution tests
         ├── agentRoutes.test.js   # Agent HTTP API & multi-turn loop integration tests
         ├── booking.test.js       # Transactional confirmation & race condition tests
         ├── cancellation.test.js  # Cancellation query and validation tests
+        ├── deploymentSecurity.test.js # Security headers, CORS allowlist, and error masking tests
         ├── e2eIntegration.test.js# Full HTTP end-to-end recovery lifecycle tests
         ├── matching.test.js      # Deterministic qualification engine tests
         ├── messageDrafting.test.js # AI drafting & deterministic fallback tests
@@ -332,9 +335,9 @@ npm test
 ```
 
 ### Verified Test Results
-- **Pass Rate:** **100%** (208 passed, 0 failed, 0 skipped)
-- **Suites:** 55 test suites across 11 test files
-- **Duration:** ~4.8 seconds
+- **Pass Rate:** **100%** (216 passed, 0 failed, 0 skipped)
+- **Suites:** 58 test suites across 12 test files
+- **Duration:** ~5.5 seconds
 - **Zero API Cost:** All unit, integration, and E2E tests execute against in-memory databases with mock AI clients.
 
 ---
@@ -402,8 +405,9 @@ A comprehensive M6 Step 3 Security Audit was conducted across the application. S
 - **Milestone 4 — AI Agent with OpenAI Tool Calling:** Complete & Merged.
 - **Milestone 5 — React Frontend & Dashboard UI:** Complete & Merged.
 - **Milestone 6 — Integration Testing, Security Audit & AI Frontend:** Complete & Merged (`ca35d09`).
-- **Milestone 7 — Final Project Documentation:** **Completed** in this pass.
-- **Next Step:** Milestone 8 — Deployment Preparation & Certification Submission.
+- **Milestone 7 — Final Project Documentation:** Complete & Merged.
+- **Milestone 8 — Deployment Preparation & Public-Demo Hardening:** Complete (branch `deploy/m8-render-preparation`).
+- **Next Step:** Final Certification Submission & Live Demonstration Walkthrough.
 
 ---
 
