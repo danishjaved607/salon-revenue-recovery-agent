@@ -19,8 +19,9 @@ const path = require('path');
 const fs   = require('fs');
 const { DatabaseSync } = require('node:sqlite');
 
-// Load environment variables if dotenv is installed, otherwise proceed with defaults
+// Load environment variables if dotenv is installed, checking root and server .env
 try {
+  require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
   require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 } catch (_) {}
 

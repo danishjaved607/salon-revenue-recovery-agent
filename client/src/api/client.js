@@ -1,13 +1,23 @@
 import axios from 'axios';
 
 /**
- * Reusable Axios HTTP client configured for the Salon Revenue Recovery Agent.
- *
- * Uses a relative base URL ('/api') to leverage the Vite proxy in development
- * and serve directly from Express in production.
+ * Resolves the API base URL:
+ * - If VITE_API_BASE_URL is set (e.g. on Render: https://backend.onrender.com),
+ *   append '/api' (if not already ending in '/api').
+ * - Otherwise (local dev without custom URL), use the relative path '/api',
+ *   which leverages Vite's development proxy configured in vite.config.js.
  */
+function getApiBaseUrl() {
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (!envUrl || typeof envUrl !== 'string' || !envUrl.trim()) {
+    return '/api';
+  }
+  const cleanUrl = envUrl.trim().replace(/\/+$/, '');
+  return cleanUrl.endsWith('/api') ? cleanUrl : `${cleanUrl}/api`;
+}
+
 const apiClient = axios.create({
-  baseURL: '/api',
+  baseURL: getApiBaseUrl(),
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',

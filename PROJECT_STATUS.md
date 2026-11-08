@@ -15,8 +15,8 @@ This document tracks completed work, current progress, architectural decisions, 
 | **Milestone 4** | **Genuine AI Agent with OpenAI Tool Calling**: Part A (Foundation & Tool Schemas - Completed), Part B (Recovery Workflow & Tool Integration - Completed), Part C (Reply Simulation & Autonomous Confirmation - Completed) | **Completed** | Parts A, B, and C verified with 72 tests across agent, agentRoutes, and replySimulator (195 total project tests passed, 0 failed, 49 suites) |
 | **Milestone 5** | **React Frontend and Dashboard UI**: User-facing React + Vite interface for appointments, cancellations, waitlist, matching candidates, offers, simulated customer responses, recovered bookings, and revenue metrics | **Completed** | Parts A, B, C, and D verified; Vite production build verified |
 | **Milestone 6** | **Integration, Testing, Security Audit & AI Frontend**: End-to-end integration tests, complete AI recovery agent interface, and security audit | **Completed** | Step 1 (HTTP integration, 208 total tests passing), Step 2 (AI Frontend), Step 3 (Security audit complete; remediation deferred). Merged in ca35d09 |
-| **Milestone 7** | **Final Project Documentation**: Comprehensive README, technical architecture, deployment guide, certification demo script, and project status | **Completed** | README.md, docs/ARCHITECTURE.md, docs/DEPLOYMENT_GUIDE.md, docs/CERTIFICATION_DEMO.md, and PROJECT_STATUS.md verified |
-| **Milestone 8** | **Deployment Preparation & Certification Submission**: Free-tier cloud deployment preparation, Render setup, and final evaluation | **Pending** | Deployment status: NOT YET DEPLOYED; scheduled next |
+| **Milestone 8** | **Deployment Preparation & Public-Demo Hardening**: Free-tier Render readiness, Helmet, CORS allowlist, rate limiting, error masking, uuid remediation, and render.yaml | **Completed** | 216 tests passing across 58 suites; Vite build verified; deployment status: PREPARED (NOT YET DEPLOYED) |
+| **Certification Review** | **Final Certification Submission & Evaluation**: Live demonstration walkthrough, evaluator Q&A, and certification grading | **Pending** | Scheduled next; ready for evaluation |
 
 ---
 
@@ -1144,9 +1144,73 @@ Comprehensive, professional documentation produced and verified across all requi
 
 ---
 
+## Milestone 8 — Deployment Preparation & Public-Demo Hardening (Completed)
+
+Implemented complete deployment readiness for the $0 Render hosting target while establishing essential defense-in-depth protections for the public certification demo:
+
+### 1. Frontend Production API Resolution
+- Refactored `client/src/api/client.js` with `getApiBaseUrl()`:
+  - In production static hosting on Render, dynamically prepends `VITE_API_BASE_URL` with `/api` normalizer.
+  - In local development, falls back cleanly to relative `/api`, preserving the local Vite dev proxy (`localhost:5173` &rarr; `localhost:3000`).
+  - Zero hardcoded localhost URLs in production client bundle.
+  - Verified client build output (`npm run build`) contains zero exposed secrets or API keys.
+
+### 2. Backend Server & Environment Readiness
+- Updated `server/server.js` to bind to `process.env.HOST || '0.0.0.0'` and `process.env.PORT || 3000` for Render reverse proxy compatibility.
+- Implemented robust dual-location environment variable resolution in `server/app.js` and `server/config/database.js` checking both repository root `.env` and `server/.env`.
+- OpenAI API key is read strictly on the backend via `process.env.OPENAI_API_KEY`.
+- Updated `.env.example` with clear documentation for `CORS_ORIGIN`, `NODE_ENV`, `HOST`, and `VITE_API_BASE_URL`.
+
+### 3. Public-Demo Security Protections
+- **Helmet HTTP Security Headers:** Enabled Helmet in `server/app.js` with `crossOriginResourcePolicy: { policy: 'cross-origin' }`, enforcing `X-Content-Type-Options: nosniff` and removing `X-Powered-By`.
+- **Dedicated CORS Allowlist (`CORS_ORIGIN`):**
+  - Replaced legacy `VITE_API_BASE_URL` fallback with dedicated `CORS_ORIGIN` environment variable.
+  - Parses comma-separated origin allowlist, normalizes trailing slashes, and defaults to local dev ports (`http://localhost:5173`, `http://127.0.0.1:5173`, etc.).
+  - Explicitly rejects unauthorized origins with HTTP 403 `CORS_FORBIDDEN`.
+- **AI Agent Rate Limiter (`agentRateLimiter`):**
+  - Applied to `POST /api/agent/chat` (30 requests per 15-minute window per IP) to guard against OpenAI credit exhaustion.
+- **Mutation Rate Limiter (`mutationRateLimiter`):**
+  - Applied to state-mutating requests (`POST`, `PATCH`, `PUT`, `DELETE`) on `/api/appointments/*` and `/api/offers/*` (120 requests per 15-minute window per IP).
+  - Exempts read-only endpoints (`GET /api/dashboard/metrics`, `GET /api/appointments/cancelled`) to prevent disrupting normal evaluator exploration.
+- **Health Check Exemption:**
+  - `GET /api/health` is unthrottled to ensure Render uptime monitoring operates continuously.
+- **Production Error Masking:**
+  - Enhanced `server/middleware/errorHandler.js` to mask unexpected HTTP 500 error messages to `'Internal Server Error'` when `NODE_ENV === 'production'`.
+- **Prototype Status Notice:**
+  - Documented that all API routes remain unauthenticated for this certification demonstration. Deployed demos must use synthetic datasets exclusively.
+
+### 4. Dependency Vulnerability Remediation
+- Upgraded `uuid` from `9.0.1` to `^11.1.1` (resolving GHSA-w5hq-g745-h8pq).
+- Production dependency audit (`npm audit --omit=dev`) verified with **0 vulnerabilities**.
+- Frontend dependency audit (`client/`) verified with **0 vulnerabilities**.
+
+### 5. SQLite & Idempotent Free-Hosting Architecture
+- Retained embedded SQLite; zero database migration overhead.
+- Documented Render free-tier ephemeral disk behavior: database resets on instance restart/sleep, and `initialise()` safely re-creates tables and re-seeds clean synthetic datasets without data duplication.
+
+### 6. Render Blueprint & Documentation
+- Authored root [`render.yaml`](file:///c:/Users/lenovo/Projects/salon-revenue-recovery-agent/render.yaml) blueprint configuring `salon-revenue-recovery-api` (web service, `rootDir: server`) and `salon-revenue-recovery-client` (static site, `rootDir: client`).
+- Updated [`docs/DEPLOYMENT_GUIDE.md`](file:///c:/Users/lenovo/Projects/salon-revenue-recovery-agent/docs/DEPLOYMENT_GUIDE.md) with comprehensive manual dashboard setup instructions and verification checklists.
+
+### 7. Automated Test Verification
+- Added `server/tests/deploymentSecurity.test.js` covering health checks, Helmet headers, CORS allowlist/rejection, production error masking, and rate limiter configuration.
+- **216 tests passed across 58 suites (100% pass rate)**.
+
+---
+
+## Known Issues / Constraints & Limitations
+
+- **Node 22 Experimental SQLite Warning:** Node.js emits `ExperimentalWarning: SQLite is an experimental feature` when initializing `node:sqlite`. This is normal behavior for Node 22 and does not affect runtime reliability.
+- **Ephemeral Filesystem on Free Hosts:** Embedded SQLite on free cloud tiers (such as Render) resets on service sleep or redeploy. Seed data is safely reloaded on startup via `initialise()`. Persistent storage requires paid cloud volumes or migration to PostgreSQL.
+- **Simulated Customer Replies:** Live WhatsApp/SMS transport remains deferred; customer replies (`YES`, `NO`, `NO_REPLY`) are simulated through the dedicated reply simulation service.
+- **No Authentication / Access Control (SEC-02):** The application is an evaluation prototype with no authentication, RBAC, or session management. It must not be deployed to public multi-tenant environments without security hardening.
+- **OpenAI API Quota Dependency:** Live OpenAI calls require funded API credits. When credits are exhausted (HTTP 429), the system surfaces clear error envelopes and utilizes deterministic fallback templates.
+
+---
+
 ## Next Steps
 
-- **Milestone 8 — Deployment Preparation & Certification Submission**:
-  - Review Render deployment prerequisites (monorepo configuration, CORS alignment).
-  - Prepare submission bundle and final demonstration video recording.
-  - Final certification review and submission.
+- **Final Certification Submission & Evaluation**:
+  - Review deployment readiness branch `deploy/m8-render-preparation`.
+  - Conduct final demonstration walkthrough based on [`docs/CERTIFICATION_DEMO.md`](file:///c:/Users/lenovo/Projects/salon-revenue-recovery-agent/docs/CERTIFICATION_DEMO.md).
+  - Submit project repository for certification evaluation.
